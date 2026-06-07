@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.1.0";
+const WM_TIPPSPIEL_CARD_VERSION = "1.1.1";
 
 const ALL_GROUPS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 const DEFAULT_ACCENT = "#fbbf24";
@@ -8,6 +8,7 @@ const TABS = [
   { id: "tips", label: "Tippen", icon: "mdi:soccer" },
   { id: "matches", label: "Spiele", icon: "mdi:calendar-clock" },
   { id: "standings", label: "Rangliste", icon: "mdi:podium-gold" },
+  { id: "players", label: "Spieler", icon: "mdi:account-group" },
 ];
 
 const TEAM_FLAGS = {
@@ -343,6 +344,7 @@ class WmTippspielCard extends HTMLElement {
     this._tab = this._tab || "tips";
     this._draftTips = this._draftTips || {};
     this._draftResults = this._draftResults || {};
+    this._newPlayerName = this._newPlayerName || "";
     if (!this.shadowRoot) {
       this.attachShadow({ mode: "open" });
     }
@@ -734,6 +736,79 @@ class WmTippspielCard extends HTMLElement {
         text-align: center;
         color: var(--secondary-text-color, #aaa);
       }
+      .version-badge {
+        position: absolute;
+        right: 12px;
+        bottom: 8px;
+        font-size: 0.62rem;
+        opacity: 0.45;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+      }
+      .player-panel {
+        border-radius: 16px;
+        padding: 16px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.08);
+      }
+      .player-panel h3 {
+        margin: 0 0 6px;
+        font-size: 1rem;
+      }
+      .player-panel p {
+        margin: 0 0 14px;
+        font-size: 0.82rem;
+        opacity: 0.72;
+        line-height: 1.45;
+      }
+      .player-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-bottom: 14px;
+      }
+      .player-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 10px 12px;
+        border-radius: 12px;
+        background: rgba(0,0,0,0.18);
+        border: 1px solid rgba(255,255,255,0.08);
+      }
+      .player-row-name { font-weight: 700; font-size: 0.92rem; }
+      .player-row-id { font-size: 0.68rem; opacity: 0.5; }
+      .player-row-actions { display: flex; gap: 6px; }
+      .btn-icon {
+        border: 1px solid rgba(255,255,255,0.12);
+        background: rgba(255,255,255,0.06);
+        color: inherit;
+        border-radius: 10px;
+        padding: 6px 10px;
+        font-size: 0.75rem;
+        cursor: pointer;
+      }
+      .btn-icon.danger { color: #fca5a5; border-color: rgba(248,113,113,0.35); }
+      .add-player-box {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+        align-items: center;
+      }
+      .add-player-input {
+        width: 100%;
+        border-radius: 12px;
+        border: 1px solid rgba(255,255,255,0.15);
+        background: rgba(0,0,0,0.22);
+        color: inherit;
+        padding: 12px 14px;
+        font-size: 0.92rem;
+      }
+      .add-player-input:focus {
+        outline: 2px solid ${accent}88;
+        border-color: ${accent};
+      }
     `;
   }
 
@@ -756,8 +831,11 @@ class WmTippspielCard extends HTMLElement {
       const playerId = this._selectedPlayer;
       const playerTips = tips[playerId] || {};
 
+      if (!players.length && this._tab === "tips") this._tab = "players";
+
       if (this._tab === "standings") body = this._renderStandings(standings);
       else if (this._tab === "matches") body = this._renderMatchesList(filtered, results);
+      else if (this._tab === "players") body = this._renderPlayers(players);
       else body = this._renderTips(filtered, playerTips, results, playerId, players);
     }
 
@@ -795,6 +873,7 @@ class WmTippspielCard extends HTMLElement {
           </div>
           <div class="body">${body}</div>
           ${cfg.show_rules !== false ? `<div class="rules">⚽ 3 Punkte exakt · 1 Punkt richtige Tendenz</div>` : ""}
+          <div class="version-badge">v${WM_TIPPSPIEL_CARD_VERSION}</div>
         </div>
       </ha-card>
     `;
@@ -831,6 +910,79 @@ class WmTippspielCard extends HTMLElement {
         bucket[matchId][side] = ev.target.value;
       });
     });
+
+    this.shadowRoot.querySelector("[data-action=add-player-card]")?.addEventListener("click", () =>
+      this._addPlayerFromCard()
+    );
+
+    this.shadowRoot.querySelector(".add-player-input")?.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") this._addPlayerFromCard();
+    });
+
+    this.shadowRoot.querySelector(".add-player-input")?.addEventListener("input", (ev) => {
+      this._newPlayerName = ev.target.value;
+    });
+
+    this.shadowRoot.querySelectorAll("[data-action=select-player-row]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        this._selectedPlayer = btn.getAttribute("data-player");
+        this._tab = "tips";
+        this._renderShell();
+      });
+    });
+
+    this.shadowRoot.querySelectorAll("[data-action=remove-player]").forEach((btn) => {
+      btn.addEventListener("click", () => this._removePlayer(btn.getAttribute("data-player")));
+    });
+  }
+
+  _renderPlayers(players) {
+    const list =
+      players.length > 0
+        ? `<div class="player-list">${players
+            .map(
+              (p) =>
+                `<div class="player-row">
+                  <div>
+                    <div class="player-row-name">${escapeHtml(p.name)}</div>
+                    <div class="player-row-id">ID: ${escapeHtml(p.id)}</div>
+                  </div>
+                  <div class="player-row-actions">
+                    <button type="button" class="btn-icon" data-action="select-player-row" data-player="${escapeHtml(p.id)}">Tippen</button>
+                    ${this._config.admin ? `<button type="button" class="btn-icon danger" data-action="remove-player" data-player="${escapeHtml(p.id)}">Entfernen</button>` : ""}
+                  </div>
+                </div>`
+            )
+            .join("")}</div>`
+        : `<div class="empty" style="margin-bottom:14px">
+            <div class="empty-icon">👥</div>
+            <h3>Noch keine Spieler</h3>
+            <p>Füge unten die ersten Mitspieler hinzu – z. B. deinen Namen.</p>
+          </div>`;
+
+    return `<div class="player-panel">
+      <h3>Mitspieler verwalten</h3>
+      <p>Spieler werden für das gesamte Tippspiel gespeichert und stehen auf allen Geräten zur Verfügung.</p>
+      ${list}
+      <div class="add-player-box">
+        <input class="add-player-input" type="text" placeholder="Name eingeben…" value="${escapeHtml(this._newPlayerName || "")}" />
+        <button type="button" class="btn" data-action="add-player-card" style="margin-top:0;width:auto;padding:12px 16px">+ Hinzufügen</button>
+      </div>
+    </div>`;
+  }
+
+  async _addPlayerFromCard() {
+    const name = (this._newPlayerName || "").trim();
+    if (!name || !this._hass) return;
+    await this._callService("add_player", { name });
+    this._newPlayerName = "";
+    this._tab = "tips";
+  }
+
+  async _removePlayer(playerId) {
+    if (!playerId || !this._hass || !this._config.admin) return;
+    await this._callService("remove_player", { player_id: playerId });
+    if (this._selectedPlayer === playerId) this._selectedPlayer = null;
   }
 
   _renderStandings(standings) {
@@ -929,8 +1081,9 @@ class WmTippspielCard extends HTMLElement {
     if (!players.length) {
       return `<div class="empty">
         <div class="empty-icon">👥</div>
-        <h3>Noch keine Spieler</h3>
-        <p>Öffne die Karten-Einstellungen (Zahnrad) und füge unter „Spieler“ die Mitspieler hinzu.</p>
+        <h3>Spieler fehlen</h3>
+        <p>Wechsle zum Tab <strong>Spieler</strong> und füge Mitspieler hinzu.</p>
+        <button type="button" class="btn" data-tab="players" style="margin-top:12px">Zu Spieler wechseln</button>
       </div>`;
     }
     if (!playerId) {
