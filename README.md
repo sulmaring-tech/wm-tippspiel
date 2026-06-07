@@ -42,6 +42,7 @@ Entity: `update.<tippspiel_name>_software` (am WM-Tippspiel-Gerät)
 - Vergleicht die installierte Version mit dem neuesten **[GitHub Release](https://github.com/sulmaring-tech/wm-tippspiel/releases)**
 - Update kann direkt in Home Assistant installiert werden
 - Nach dem Update ist ein **Neustart** von Home Assistant erforderlich
+- **Update-Check-Intervall** (ab v1.3.4): unter *Geräte & Dienste → WM Tippspiel → Konfigurieren* einstellbar (Standard **21600** Sek. = 6 h, Minimum **300** Sek. = 5 min, Maximum 24 h)
 
 Bei Installation über **HACS** erscheint zusätzlich ein HACS-Update-Eintrag. Beide funktionieren parallel.
 

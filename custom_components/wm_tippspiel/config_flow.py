@@ -16,9 +16,13 @@ from .const import (
     CONF_PLAYERS,
     CONF_SCAN_INTERVAL,
     CONF_TITLE,
+    CONF_UPDATE_CHECK_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_UPDATE_CHECK_INTERVAL,
     DOMAIN,
+    MAX_UPDATE_CHECK_INTERVAL,
     MIN_SCAN_INTERVAL,
+    MIN_UPDATE_CHECK_INTERVAL,
 )
 
 
@@ -97,6 +101,18 @@ class WmTippspielOptionsFlowHandler(OptionsFlow):
                     ): vol.All(
                         vol.Coerce(int),
                         vol.Range(min=MIN_SCAN_INTERVAL, max=86400),
+                    ),
+                    vol.Optional(
+                        CONF_UPDATE_CHECK_INTERVAL,
+                        default=options.get(
+                            CONF_UPDATE_CHECK_INTERVAL, DEFAULT_UPDATE_CHECK_INTERVAL
+                        ),
+                    ): vol.All(
+                        vol.Coerce(int),
+                        vol.Range(
+                            min=MIN_UPDATE_CHECK_INTERVAL,
+                            max=MAX_UPDATE_CHECK_INTERVAL,
+                        ),
                     ),
                 }
             ),

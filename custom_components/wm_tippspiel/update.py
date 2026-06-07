@@ -25,6 +25,8 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.issue_registry import IssueSeverity, async_create_issue
 
 from .const import (
+    CONF_UPDATE_CHECK_INTERVAL,
+    DEFAULT_UPDATE_CHECK_INTERVAL,
     DOMAIN,
     GITHUB_RELEASES_URL,
     GITHUB_USER_AGENT,
@@ -32,8 +34,6 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
-
-UPDATE_INTERVAL_SECONDS = 6 * 60 * 60
 
 
 async def async_setup_entry(
@@ -81,9 +81,14 @@ class WmTippspielUpdateEntity(UpdateEntity):
     def _schedule_next_check(self) -> None:
         if self._unsub_update:
             self._unsub_update()
+        interval = int(
+            self._entry.options.get(
+                CONF_UPDATE_CHECK_INTERVAL, DEFAULT_UPDATE_CHECK_INTERVAL
+            )
+        )
         self._unsub_update = async_call_later(
             self.hass,
-            UPDATE_INTERVAL_SECONDS,
+            interval,
             self._handle_scheduled_update,
         )
 

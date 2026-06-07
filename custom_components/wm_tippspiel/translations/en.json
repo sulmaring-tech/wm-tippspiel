@@ -17,12 +17,13 @@
   "options": {
     "step": {
       "init": {
-        "title": "Automatic results",
-        "description": "API-Football (api-sports.io) fetches finished World Cup matches and records results.",
+        "title": "WM Tippspiel options",
+        "description": "Automatic results (API-Football) and update checks (GitHub releases).",
         "data": {
           "api_key": "API-Football key",
           "auto_results": "Fetch results automatically",
-          "scan_interval": "Poll interval (seconds, min. 300)"
+          "scan_interval": "Results poll interval (seconds, min. 300)",
+          "update_check_interval": "Update check interval (seconds, min. 300, default 21600 = 6 h)"
         }
       }
     }

@@ -17,12 +17,13 @@
   "options": {
     "step": {
       "init": {
-        "title": "Automatische Ergebnisse",
-        "description": "API-Football (api-sports.io) abfragt beendete WM-Spiele und trägt Ergebnisse ein.",
+        "title": "WM Tippspiel Optionen",
+        "description": "Automatische Ergebnisse (API-Football) und Update-Prüfung (GitHub Releases).",
         "data": {
           "api_key": "API-Football Schlüssel",
           "auto_results": "Ergebnisse automatisch abrufen",
-          "scan_interval": "Abfrage-Intervall (Sekunden, min. 300)"
+          "scan_interval": "Ergebnis-Abfrage (Sekunden, min. 300)",
+          "update_check_interval": "Update-Check (Sekunden, min. 300, Standard 21600 = 6 h)"
         }
       }
     }
