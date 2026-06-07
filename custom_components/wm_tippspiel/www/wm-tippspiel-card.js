@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.6.0";
+const WM_TIPPSPIEL_CARD_VERSION = "1.6.2";
 
 const ALL_GROUPS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 const KNOCKOUT_ROUNDS = [
@@ -122,6 +122,11 @@ function tipStatusLabel(status) {
   if (status === "locked") return "Gesperrt";
   if (status === "exact") return "Exakter Tipp";
   return "";
+}
+
+function parseWinnerRef(name) {
+  const match = /^Sieger\s+(.+)$/.exec(String(name || "").trim());
+  return match ? match[1] : null;
 }
 
 function normalizeGroups(groups) {
@@ -1276,7 +1281,7 @@ class WmTippspielCard extends HTMLElement {
       }
       .group-table-row {
         display: grid;
-        grid-template-columns: 14px 1fr repeat(4, 18px);
+        grid-template-columns: 14px 28px repeat(4, 18px);
         gap: 4px;
         padding: 4px 6px;
         align-items: center;
@@ -1289,10 +1294,17 @@ class WmTippspielCard extends HTMLElement {
       }
       .group-table-row .pos { opacity: 0.65; font-weight: 700; }
       .group-table-row .team-cell {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        font-weight: 600;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .group-table-row .team-cell .team-flag-img {
+        width: 22px;
+        height: 15px;
+      }
+      .group-table-row .team-cell .team-flag-fallback {
+        font-size: 0.95rem;
+        line-height: 1;
       }
       .group-table-row .num { text-align: center; font-variant-numeric: tabular-nums; }
       .rank-trend {
@@ -1962,8 +1974,25 @@ class WmTippspielCard extends HTMLElement {
       });
     }
     if (this._tab === "bracket") {
-      requestAnimationFrame(() => this._drawBracketConnectors());
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => this._drawBracketConnectors());
+      });
     }
+  }
+
+  _ensureBracketResizeObserver() {
+    if (this._bracketResizeObserver) return;
+    this._bracketResizeObserver = new ResizeObserver(() => {
+      if (this._tab === "bracket") this._drawBracketConnectors();
+    });
+  }
+
+  _watchBracketTree() {
+    this._ensureBracketResizeObserver();
+    const tree = this.shadowRoot?.querySelector(".bracket-tree");
+    if (!tree) return;
+    this._bracketResizeObserver.disconnect();
+    this._bracketResizeObserver.observe(tree);
   }
 
   _renderPlayers(players) {
@@ -2104,7 +2133,7 @@ class WmTippspielCard extends HTMLElement {
           .map((row, i) => {
             return `<div class="group-table-row">
               <span class="pos">${i + 1}</span>
-              <span class="team-cell" title="${escapeHtml(row.team)}">${escapeHtml(row.team)}</span>
+              <span class="team-cell" title="${escapeHtml(row.team)}">${teamFlag(row.team)}</span>
               <span class="num">${row.played}</span>
               <span class="num">${row.points}</span>
               <span class="num">${row.gf}</span>
@@ -2114,7 +2143,7 @@ class WmTippspielCard extends HTMLElement {
           .join("");
         return `<div class="group-table">
           <div class="group-table-head">Gruppe ${g}</div>
-          <div class="group-table-row head"><span>#</span><span>Team</span><span>Sp</span><span>Pkt</span><span>T</span><span>+/-</span></div>
+          <div class="group-table-row head"><span>#</span><span></span><span>Sp</span><span>Pkt</span><span>T</span><span>+/-</span></div>
           ${body}
         </div>`;
       })
@@ -2413,7 +2442,7 @@ class WmTippspielCard extends HTMLElement {
 
     return `${adminBar}<div class="bracket-scroll">
       <div class="bracket-tree">
-        <svg class="bracket-svg" aria-hidden="true"><path class="bracket-line" fill="none" stroke="rgba(255,255,255,0.22)" stroke-width="2"></path></svg>
+        <svg class="bracket-svg" aria-hidden="true"></svg>
         ${leftSide}${center}${rightSide}
       </div>
       ${this._renderBracketMobile(mobileRounds, playerTips, results, playerId)}
@@ -2423,61 +2452,136 @@ class WmTippspielCard extends HTMLElement {
   _drawBracketConnectors() {
     if (this._tab !== "bracket") return;
     const tree = this.shadowRoot?.querySelector(".bracket-tree");
-    const path = tree?.querySelector(".bracket-line");
-    if (!tree || !path) return;
+    const svg = tree?.querySelector(".bracket-svg");
+    if (!tree || !svg) return;
+
     const treeRect = tree.getBoundingClientRect();
     if (!treeRect.width || !treeRect.height) return;
-    const slots = [...tree.querySelectorAll("[data-bracket-slot]")];
-    if (slots.length < 2) {
-      path.setAttribute("d", "");
-      return;
-    }
+
+    svg.innerHTML = "";
+    svg.setAttribute("viewBox", `0 0 ${treeRect.width} ${treeRect.height}`);
+    svg.setAttribute("width", String(treeRect.width));
+    svg.setAttribute("height", String(treeRect.height));
+
+    const STUB = 12;
+    const FORK = 6;
+    const stroke = "rgba(255,255,255,0.22)";
     const centerX = treeRect.width / 2;
-    const segments = [];
-    const leftSlots = slots.filter((el) => {
-      const r = el.getBoundingClientRect();
-      return r.left + r.width / 2 < centerX + treeRect.left - 20;
+
+    const slotMap = new Map();
+    tree.querySelectorAll("[data-bracket-slot]").forEach((el) => {
+      const id = el.getAttribute("data-match-id");
+      if (id) slotMap.set(id, el);
     });
-    const rightSlots = slots.filter((el) => {
-      const r = el.getBoundingClientRect();
-      return r.left + r.width / 2 > centerX + treeRect.left + 20;
-    });
-    const toLocal = (el) => {
+
+    const slotBox = (el) => {
       const r = el.getBoundingClientRect();
       return {
-        x: r.left + r.width - treeRect.left,
-        y: r.top + r.height / 2 - treeRect.top,
-        xL: r.left - treeRect.left,
-        yC: r.top + r.height / 2 - treeRect.top,
+        cx: r.left + r.width / 2 - treeRect.left,
+        cy: r.top + r.height / 2 - treeRect.top,
+        right: r.right - treeRect.left,
+        left: r.left - treeRect.left,
       };
     };
-    for (let i = 0; i < leftSlots.length; i += 2) {
-      const a = leftSlots[i];
-      const b = leftSlots[i + 1];
-      if (!a || !b) continue;
-      const pa = toLocal(a);
-      const pb = toLocal(b);
-      const midY = (pa.y + pb.y) / 2;
-      const stub = 14;
-      segments.push(`M ${pa.x} ${pa.y} H ${pa.x + stub}`);
-      segments.push(`M ${pb.x} ${pb.y} H ${pb.x + stub}`);
-      segments.push(`M ${pa.x + stub} ${pa.y} V ${pb.y}`);
-      segments.push(`M ${pa.x + stub} ${midY} H ${centerX - 8}`);
+
+    const addPath = (d) => {
+      const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      p.setAttribute("d", d);
+      p.setAttribute("fill", "none");
+      p.setAttribute("stroke", stroke);
+      p.setAttribute("stroke-width", "2");
+      p.setAttribute("stroke-linecap", "square");
+      svg.appendChild(p);
+    };
+
+    const connectPairLeft = (a, b, target) => {
+      const pa = slotBox(a);
+      const pb = slotBox(b);
+      const pt = slotBox(target);
+      const xFork = Math.max(pa.right, pb.right) + STUB;
+      const xJoin = xFork + FORK;
+      const yMid = (pa.cy + pb.cy) / 2;
+
+      addPath(`M ${pa.right} ${pa.cy} H ${xFork}`);
+      addPath(`M ${pb.right} ${pb.cy} H ${xFork}`);
+      addPath(`M ${xFork} ${pa.cy} V ${pb.cy}`);
+      addPath(`M ${xFork} ${yMid} H ${xJoin}`);
+      addPath(`M ${xJoin} ${yMid} V ${pt.cy}`);
+      addPath(`M ${xJoin} ${pt.cy} H ${pt.left}`);
+    };
+
+    const connectPairRight = (a, b, target) => {
+      const pa = slotBox(a);
+      const pb = slotBox(b);
+      const pt = slotBox(target);
+      const xFork = Math.min(pa.left, pb.left) - STUB;
+      const xJoin = xFork - FORK;
+      const yMid = (pa.cy + pb.cy) / 2;
+
+      addPath(`M ${pa.left} ${pa.cy} H ${xFork}`);
+      addPath(`M ${pb.left} ${pb.cy} H ${xFork}`);
+      addPath(`M ${xFork} ${pa.cy} V ${pb.cy}`);
+      addPath(`M ${xFork} ${yMid} H ${xJoin}`);
+      addPath(`M ${xJoin} ${yMid} V ${pt.cy}`);
+      addPath(`M ${xJoin} ${pt.cy} H ${pt.right}`);
+    };
+
+    const connectSingleLeft = (from, target) => {
+      const pf = slotBox(from);
+      const pt = slotBox(target);
+      const xMid = (pf.right + pt.left) / 2;
+      addPath(`M ${pf.right} ${pf.cy} H ${xMid} V ${pt.cy} H ${pt.left}`);
+    };
+
+    const connectSingleRight = (from, target) => {
+      const pf = slotBox(from);
+      const pt = slotBox(target);
+      const xMid = (pf.left + pt.right) / 2;
+      addPath(`M ${pf.left} ${pf.cy} H ${xMid} V ${pt.cy} H ${pt.right}`);
+    };
+
+    const connectSingle = (from, target) => {
+      const pf = slotBox(from);
+      const pt = slotBox(target);
+      if (pf.cx <= pt.cx) connectSingleLeft(from, target);
+      else connectSingleRight(from, target);
+    };
+
+    const knockoutMatches = (this._data().matches || []).filter((m) => !m.group);
+    const drawn = new Set();
+
+    for (const match of knockoutMatches) {
+      const parents = [parseWinnerRef(match.home), parseWinnerRef(match.away)].filter(Boolean);
+      const targetEl = slotMap.get(match.id);
+      if (!targetEl || !parents.length) continue;
+
+      if (parents.length === 2) {
+        const key = `${parents[0]}|${parents[1]}|${match.id}`;
+        if (drawn.has(key)) continue;
+        drawn.add(key);
+
+        const a = slotMap.get(parents[0]);
+        const b = slotMap.get(parents[1]);
+        if (!a || !b) continue;
+
+        const pa = slotBox(a);
+        const pb = slotBox(b);
+        const aLeft = pa.cx < centerX;
+        const bLeft = pb.cx < centerX;
+
+        if (aLeft && bLeft) connectPairLeft(a, b, targetEl);
+        else if (!aLeft && !bLeft) connectPairRight(a, b, targetEl);
+        else {
+          connectSingle(a, targetEl);
+          connectSingle(b, targetEl);
+        }
+      } else {
+        const parentEl = slotMap.get(parents[0]);
+        if (parentEl) connectSingle(parentEl, targetEl);
+      }
     }
-    for (let i = 0; i < rightSlots.length; i += 2) {
-      const a = rightSlots[i];
-      const b = rightSlots[i + 1];
-      if (!a || !b) continue;
-      const pa = toLocal(a);
-      const pb = toLocal(b);
-      const midY = (pa.y + pb.y) / 2;
-      const stub = 14;
-      segments.push(`M ${pa.xL} ${pa.yC} H ${pa.xL - stub}`);
-      segments.push(`M ${pb.xL} ${pb.yC} H ${pb.xL - stub}`);
-      segments.push(`M ${pa.xL - stub} ${pa.yC} V ${pb.yC}`);
-      segments.push(`M ${pa.xL - stub} ${midY} H ${centerX + 8}`);
-    }
-    path.setAttribute("d", segments.join(" "));
+
+    this._watchBracketTree();
   }
 
   _tipPoints(tip, result) {
