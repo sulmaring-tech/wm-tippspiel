@@ -106,8 +106,30 @@ Die Entity-ID ergibt sich aus dem Namen deines Tippspiels, z. B. `sensor.wm_tipp
 | `player_id` | Standard-Spieler-ID für Tippabgabe |
 | `admin` | `true` = Ergebnisse in der Karte eintragen |
 | `show_groups` | Gruppen filtern, z. B. `["E"]` nur Deutschland-Gruppe |
+| `match_columns` | Spiel-Layout: `auto` (Standard), `1`, `2` oder `3` Spalten |
 
 Die `player_id` findest du in den Attributen des Spieler-Sensors oder unter `players` am Ranglisten-Sensor.
+
+### Breite der Karte
+
+Home Assistant begrenzt die Kartenbreite über das **Dashboard-Grid** – **12 Spalten = volle Breite der Ansicht**. Die Karte selbst setzt keine maximale Breite.
+
+**Mehr Platz nutzen:**
+
+1. Karte auf **12 Spalten** ziehen (volle Viewbreite)
+2. **Panel-Ansicht** verwenden – die Karte füllt dann den gesamten Bildschirm:
+
+```yaml
+views:
+  - title: WM Tippspiel
+    panel: true
+    cards:
+      - type: custom:wm-tippspiel-card
+        entity: sensor.wm_tippspiel_rangliste
+        match_columns: auto
+```
+
+3. In den Karten-Einstellungen **Spiel-Layout** auf `2` oder `3` Spalten stellen – bei breiter Karte werden Spiele nebeneinander angezeigt
 
 ## Services
 

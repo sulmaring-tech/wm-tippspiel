@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.3.3";
+const WM_TIPPSPIEL_CARD_VERSION = "1.3.5";
 
 const ALL_GROUPS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 const KNOCKOUT_ROUNDS = [
@@ -133,6 +133,7 @@ function defaultConfig(overrides = {}) {
     show_groups: [...ALL_GROUPS],
     show_knockout: true,
     show_rules: true,
+    match_columns: "auto",
     accent_color: DEFAULT_ACCENT,
     ...overrides,
   };
@@ -258,6 +259,17 @@ class WmTippspielCardEditor extends HTMLElement {
           <ha-formfield label="Punkteregeln unten anzeigen">
             <ha-switch .checked=${cfg.show_rules !== false} data-key="show_rules"></ha-switch>
           </ha-formfield>
+          <p class="ed-hint">Dashboard-Breite: maximal 12 Spalten (= volle Viewbreite). Für maximale Breite eine <strong>Panel-Ansicht</strong> nutzen.</p>
+          <ha-select
+            label="Spiel-Layout (Spalten)"
+            .value=${cfg.match_columns || "auto"}
+            data-key="match_columns"
+          >
+            <mwc-list-item value="auto">Automatisch (mehr Spalten wenn breit genug)</mwc-list-item>
+            <mwc-list-item value="1">Immer 1 Spalte</mwc-list-item>
+            <mwc-list-item value="2">Immer 2 Spalten</mwc-list-item>
+            <mwc-list-item value="3">Immer 3 Spalten</mwc-list-item>
+          </ha-select>
         </div>
 
         <div class="ed-section">
@@ -290,7 +302,7 @@ class WmTippspielCardEditor extends HTMLElement {
           margin: 0 0 10px;
           line-height: 1.45;
         }
-        ha-entity-picker, ha-textfield, ha-formfield {
+        ha-entity-picker, ha-textfield, ha-formfield, ha-select {
           display: block;
           margin-bottom: 10px;
         }
@@ -369,6 +381,10 @@ class WmTippspielCardEditor extends HTMLElement {
 
     this.querySelector("ha-switch[data-key=show_knockout]")?.addEventListener("change", (ev) => {
       this._set("show_knockout", ev.target.checked);
+    });
+
+    this.querySelector("ha-select[data-key=match_columns]")?.addEventListener("selected", (ev) => {
+      this._set("match_columns", ev.detail.value);
     });
   }
 }
@@ -692,6 +708,11 @@ class WmTippspielCard extends HTMLElement {
     return html;
   }
 
+  _matchColumns() {
+    const mode = this._config.match_columns || "auto";
+    return ["1", "2", "3"].includes(mode) ? mode : "auto";
+  }
+
   _accent() {
     return this._config.accent_color || DEFAULT_ACCENT;
   }
@@ -703,10 +724,12 @@ class WmTippspielCard extends HTMLElement {
   _styles() {
     const accent = this._accent();
     return `
-      :host { display: block; }
+      :host { display: block; width: 100%; }
       * { box-sizing: border-box; }
       ha-card {
         overflow: hidden;
+        width: 100%;
+        max-width: none;
         border-radius: 20px;
         border: none;
         background: var(--ha-card-background, var(--card-background-color, #1a1d24));
@@ -813,7 +836,41 @@ class WmTippspielCard extends HTMLElement {
         background: ${accent}18;
         color: ${accent};
       }
-      .body { padding: 14px 16px 16px; }
+      .body {
+        padding: 14px 16px 16px;
+        container-type: inline-size;
+        container-name: wm-body;
+      }
+      .body[data-match-cols="2"] .accordion-body,
+      .body[data-match-cols="3"] .accordion-body {
+        display: grid;
+        gap: 12px;
+      }
+      .body[data-match-cols="2"] .accordion-body {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .body[data-match-cols="3"] .accordion-body {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+      .body[data-match-cols="2"] .accordion-body .match,
+      .body[data-match-cols="3"] .accordion-body .match {
+        margin-bottom: 0;
+      }
+      @container wm-body (min-width: 720px) {
+        .body[data-match-cols="auto"] .accordion-body {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
+        }
+        .body[data-match-cols="auto"] .accordion-body .match {
+          margin-bottom: 0;
+        }
+      }
+      @container wm-body (min-width: 1100px) {
+        .body[data-match-cols="auto"] .accordion-body {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+      }
       .match {
         border: 1px solid rgba(255,255,255,0.07);
         border-radius: 16px;
@@ -1244,7 +1301,7 @@ class WmTippspielCard extends HTMLElement {
                 </button>`
             ).join("")}
           </div>
-          <div class="body">${body}</div>
+          <div class="body" data-match-cols="${this._matchColumns()}">${body}</div>
           ${cfg.show_rules !== false ? `<div class="rules">⚽ 3 Punkte exakt · 1 Punkt richtige Tendenz</div>` : ""}
           <div class="version-badge">v${WM_TIPPSPIEL_CARD_VERSION}</div>
         </div>
