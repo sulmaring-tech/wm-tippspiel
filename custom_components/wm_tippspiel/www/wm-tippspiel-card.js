@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.3.6";
+const WM_TIPPSPIEL_CARD_VERSION = "1.3.8";
 
 const ALL_GROUPS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 const KNOCKOUT_ROUNDS = [
@@ -134,6 +134,7 @@ function defaultConfig(overrides = {}) {
     show_knockout: true,
     show_rules: true,
     match_columns: "auto",
+    auto_save_tips: true,
     accent_color: DEFAULT_ACCENT,
     ...overrides,
   };
@@ -253,6 +254,10 @@ class WmTippspielCardEditor extends HTMLElement {
           <ha-formfield label="K.o.-Runden anzeigen (Sechzehntelfinale bis Finale)">
             <ha-switch .checked=${cfg.show_knockout !== false} data-key="show_knockout"></ha-switch>
           </ha-formfield>
+          <ha-formfield label="Tipps automatisch speichern">
+            <ha-switch .checked=${cfg.auto_save_tips !== false} data-key="auto_save_tips"></ha-switch>
+          </ha-formfield>
+          <p class="ed-hint">Bei Auto-Save wird gespeichert, sobald beide Tore eingegeben sind (ca. 1 Sek. Pause). Sonst erscheint der Button „Tipp speichern“.</p>
           <ha-formfield label="Admin-Modus (Ergebnisse eintragen)">
             <ha-switch .checked=${Boolean(cfg.admin)} data-key="admin"></ha-switch>
           </ha-formfield>
@@ -383,6 +388,10 @@ class WmTippspielCardEditor extends HTMLElement {
       this._set("show_knockout", ev.target.checked);
     });
 
+    this.querySelector("ha-switch[data-key=auto_save_tips]")?.addEventListener("change", (ev) => {
+      this._set("auto_save_tips", ev.target.checked);
+    });
+
     this.querySelector("ha-select[data-key=match_columns]")?.addEventListener("selected", (ev) => {
       this._set("match_columns", ev.detail.value);
     });
@@ -410,6 +419,8 @@ class WmTippspielCard extends HTMLElement {
     this._draftResults = this._draftResults || {};
     this._newPlayerName = this._newPlayerName || "";
     this._openAccordions = this._openAccordions || new Set();
+    this._autoSaveTimers = this._autoSaveTimers || {};
+    this._tipSaveStatus = this._tipSaveStatus || {};
     if (!this.shadowRoot) {
       this.attachShadow({ mode: "open" });
       this._bindEvents();
@@ -437,7 +448,7 @@ class WmTippspielCard extends HTMLElement {
       const saveTip = ev.target.closest("[data-action=save-tip]");
       if (saveTip) {
         ev.preventDefault();
-        this._saveTip(saveTip);
+        this._saveTip(saveTip.getAttribute("data-match"), { btn: saveTip });
         return;
       }
       const saveResult = ev.target.closest("[data-action=save-result]");
@@ -485,13 +496,26 @@ class WmTippspielCard extends HTMLElement {
       const bucket = this._draftTipsForPlayer(this._selectedPlayer);
       bucket[matchId] = bucket[matchId] || {};
       bucket[matchId][side] = input.value;
-      this._syncTipSaveButton(matchId);
+      if (this._config.auto_save_tips !== false) {
+        this._scheduleAutoSaveTip(matchId);
+      } else {
+        this._syncTipSaveButton(matchId);
+      }
     });
 
     this.shadowRoot.addEventListener("keydown", (ev) => {
       if (ev.key !== "Enter") return;
-      const input = ev.target.closest(".add-player-input");
-      if (input) this._addPlayerFromCard();
+      const tipInput = ev.target.closest('.score-input[data-kind="tip"]');
+      if (tipInput && this._config.auto_save_tips === false) {
+        const matchId = tipInput.getAttribute("data-match");
+        if (matchId && this._tipInputsValid(matchId)) {
+          ev.preventDefault();
+          this._saveTip(matchId, { btn: this.shadowRoot.querySelector(`[data-action=save-tip][data-match="${matchId}"]`) });
+        }
+        return;
+      }
+      const addInput = ev.target.closest(".add-player-input");
+      if (addInput) this._addPlayerFromCard();
     });
 
     this.shadowRoot.addEventListener(
@@ -585,6 +609,47 @@ class WmTippspielCard extends HTMLElement {
   _syncTipSaveButton(matchId) {
     const btn = this.shadowRoot?.querySelector(`[data-action=save-tip][data-match="${matchId}"]`);
     if (btn) btn.disabled = !this._tipInputsValid(matchId);
+  }
+
+  _autoSaveEnabled() {
+    return this._config.auto_save_tips !== false;
+  }
+
+  _getSavedTip(matchId) {
+    return this._state?.attributes?.tips?.[this._selectedPlayer]?.[matchId] || null;
+  }
+
+  _scheduleAutoSaveTip(matchId) {
+    if (!this._autoSaveEnabled() || !this._selectedPlayer) return;
+    clearTimeout(this._autoSaveTimers[matchId]);
+    this._autoSaveTimers[matchId] = setTimeout(() => {
+      delete this._autoSaveTimers[matchId];
+      if (this._tipInputsValid(matchId)) this._saveTip(matchId, { silent: true });
+    }, 900);
+    this._setTipSaveStatus(matchId, "pending");
+  }
+
+  _setTipSaveStatus(matchId, status) {
+    this._tipSaveStatus[matchId] = status;
+    const el = this.shadowRoot?.querySelector(`.tip-status[data-match="${matchId}"]`);
+    if (!el) return;
+    el.className = `badge tip-status tip-status-${status}`;
+    if (status === "pending") el.textContent = "…";
+    else if (status === "saving") el.textContent = "Speichern…";
+    else if (status === "saved") el.textContent = "Gespeichert ✓";
+    else if (status === "error") el.textContent = "Fehler";
+    else el.textContent = "";
+    if (status === "saved") {
+      clearTimeout(this._tipSaveStatusTimers?.[matchId]);
+      this._tipSaveStatusTimers = this._tipSaveStatusTimers || {};
+      this._tipSaveStatusTimers[matchId] = setTimeout(() => {
+        delete this._tipSaveStatus[matchId];
+        if (el.isConnected) {
+          el.className = "badge tip-status";
+          el.textContent = "";
+        }
+      }, 2200);
+    }
   }
 
   _showToast(message, type = "info") {
@@ -989,6 +1054,22 @@ class WmTippspielCard extends HTMLElement {
       .badge-result { background: rgba(34,197,94,0.15); color: #86efac; }
       .badge-locked { background: rgba(148,163,184,0.12); color: #cbd5e1; }
       .badge-points { background: ${accent}22; color: ${accent}; }
+      .tip-status {
+        min-width: 88px;
+        text-align: center;
+        opacity: 0;
+        transition: opacity 0.15s ease;
+      }
+      .tip-status-pending,
+      .tip-status-saving,
+      .tip-status-saved,
+      .tip-status-error {
+        opacity: 1;
+      }
+      .tip-status-pending { color: #94a3b8; border-color: rgba(148,163,184,0.25); }
+      .tip-status-saving { color: ${accent}; border-color: ${accent}55; }
+      .tip-status-saved { color: #86efac; border-color: rgba(134,239,172,0.35); background: rgba(34,197,94,0.12); }
+      .tip-status-error { color: #fca5a5; border-color: rgba(248,113,113,0.35); }
       .btn {
         margin-top: 10px;
         width: 100%;
@@ -1506,8 +1587,23 @@ class WmTippspielCard extends HTMLElement {
         extra += `<span class="badge badge-points">+${pts} Punkte</span>`;
       }
       if (!locked) {
-        const canSave = this._tipInputsValid(m.id) || (homeVal !== "" && awayVal !== "");
-        extra += `<button type="button" class="btn" data-action="save-tip" data-match="${m.id}"${canSave ? "" : " disabled"}>Tipp speichern</button>`;
+        if (this._autoSaveEnabled()) {
+          const status = this._tipSaveStatus[m.id] || "";
+          extra += `<span class="badge tip-status${status ? ` tip-status-${status}` : ""}" data-match="${m.id}">${
+            status === "pending"
+              ? "…"
+              : status === "saving"
+                ? "Speichern…"
+                : status === "saved"
+                  ? "Gespeichert ✓"
+                  : status === "error"
+                    ? "Fehler"
+                    : ""
+          }</span>`;
+        } else {
+          const canSave = this._tipInputsValid(m.id) || (homeVal !== "" && awayVal !== "");
+          extra += `<button type="button" class="btn" data-action="save-tip" data-match="${m.id}"${canSave ? "" : " disabled"}>Tipp speichern</button>`;
+        }
       } else if (locked) {
         extra += `<span class="badge badge-locked">🔒 Tippabgabe geschlossen</span>`;
       }
@@ -1526,12 +1622,18 @@ class WmTippspielCard extends HTMLElement {
     });
   }
 
-  async _saveTip(btn) {
+  async _saveTip(matchId, options = {}) {
+    const btn = options.btn || null;
+    const silent = Boolean(options.silent);
     if (!this._selectedPlayer) {
-      this._showToast("Bitte zuerst einen Spieler auswählen.", "error");
+      if (!silent) this._showToast("Bitte zuerst einen Spieler auswählen.", "error");
       return;
     }
-    const matchId = btn.getAttribute("data-match");
+    if (!matchId) return;
+
+    clearTimeout(this._autoSaveTimers[matchId]);
+    delete this._autoSaveTimers[matchId];
+
     const inputs = this.shadowRoot.querySelectorAll(
       `.score-input[data-match="${matchId}"][data-kind="tip"]`
     );
@@ -1542,29 +1644,49 @@ class WmTippspielCard extends HTMLElement {
       if (inp.getAttribute("data-side") === "away") away = inp.value;
     });
     if (home === "" || away === "" || Number.isNaN(Number(home)) || Number.isNaN(Number(away))) {
-      this._showToast("Bitte beide Tore eingeben.", "error");
+      if (!silent) this._showToast("Bitte beide Tore eingeben.", "error");
       return;
     }
-    btn.disabled = true;
-    btn.textContent = "Speichern…";
+
+    const homeNum = Number(home);
+    const awayNum = Number(away);
+    const saved = this._getSavedTip(matchId);
+    if (saved && saved.home === homeNum && saved.away === awayNum) {
+      this._setTipSaveStatus(matchId, "saved");
+      return;
+    }
+
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Speichern…";
+    } else {
+      this._setTipSaveStatus(matchId, "saving");
+    }
+
     try {
       await this._callService("set_tip", {
         player_id: this._selectedPlayer,
         match_id: matchId,
-        home: Number(home),
-        away: Number(away),
+        home: homeNum,
+        away: awayNum,
       });
-      this._applySavedTip(matchId, Number(home), Number(away));
+      this._applySavedTip(matchId, homeNum, awayNum);
       const playerDrafts = this._draftTipsForPlayer(this._selectedPlayer);
       delete playerDrafts[matchId];
-      this._renderShell();
-      this._showToast("Tipp gespeichert ✓", "success");
+      this._setTipSaveStatus(matchId, "saved");
+      if (!silent) {
+        this._renderShell();
+        this._showToast("Tipp gespeichert ✓", "success");
+      }
     } catch (err) {
       console.error("[wm-tippspiel-card] set_tip failed:", err);
-      this._showToast(`Speichern fehlgeschlagen: ${err?.message || err}`, "error");
+      this._setTipSaveStatus(matchId, "error");
+      if (!silent) this._showToast(`Speichern fehlgeschlagen: ${err?.message || err}`, "error");
     } finally {
-      btn.disabled = false;
-      btn.textContent = "Tipp speichern";
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "Tipp speichern";
+      }
     }
   }
 

@@ -107,6 +107,7 @@ Die Entity-ID ergibt sich aus dem Namen deines Tippspiels, z. B. `sensor.wm_tipp
 | `admin` | `true` = Ergebnisse in der Karte eintragen |
 | `show_groups` | Gruppen filtern, z. B. `["E"]` nur Deutschland-Gruppe |
 | `match_columns` | Spiel-Layout: `auto` (Standard), `1`, `2` oder `3` Spalten |
+| `auto_save_tips` | `true` (Standard): Tipps automatisch speichern; `false`: manuell per Button |
 
 Die `player_id` findest du in den Attributen des Spieler-Sensors oder unter `players` am Ranglisten-Sensor.
 
