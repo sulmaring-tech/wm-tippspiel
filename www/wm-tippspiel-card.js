@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.3.15";
+const WM_TIPPSPIEL_CARD_VERSION = "1.4.0";
 
 const ALL_GROUPS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 const KNOCKOUT_ROUNDS = [
@@ -15,7 +15,7 @@ const FLAG_CDN = "https://flagcdn.com/w40";
 
 const TABS = [
   { id: "tips", label: "Tippen", icon: "mdi:soccer" },
-  { id: "matches", label: "Spiele", icon: "mdi:calendar-clock" },
+  { id: "bracket", label: "Turnierbaum", icon: "mdi:tournament", knockout: true },
   { id: "standings", label: "Rangliste", icon: "mdi:podium-gold" },
   { id: "players", label: "Spieler", icon: "mdi:account-group" },
 ];
@@ -100,6 +100,12 @@ function isPastKickoff(iso, bufferMinutes = 5) {
 function normalizeGroups(groups) {
   if (!groups || !groups.length) return [...ALL_GROUPS];
   return groups.map((g) => String(g).toUpperCase());
+}
+
+function splitRoundMatches(list) {
+  if (!list.length) return { left: [], right: [] };
+  const mid = Math.ceil(list.length / 2);
+  return { left: list.slice(0, mid), right: list.slice(mid) };
 }
 
 function partitionMatches(matches) {
@@ -321,7 +327,7 @@ class WmTippspielCardEditor extends HTMLElement {
                 </label>`
             ).join("")}
           </div>
-          <ha-formfield label="K.o.-Runden anzeigen (Sechzehntelfinale bis Finale)">
+          <ha-formfield label="K.o.-Runden im Turnierbaum (Sechzehntelfinale bis Finale)">
             <ha-switch data-key="show_knockout"></ha-switch>
           </ha-formfield>
           <ha-formfield label="Tipps automatisch speichern">
@@ -843,6 +849,19 @@ class WmTippspielCard extends HTMLElement {
       if (m.group) return set.has(String(m.group).toUpperCase());
       return showKnockout;
     });
+  }
+
+  _groupStageMatches(matches) {
+    return this._filteredMatches(matches).filter((m) => m.group);
+  }
+
+  _knockoutMatches(matches) {
+    return this._filteredMatches(matches).filter((m) => !m.group);
+  }
+
+  _visibleTabs() {
+    const showKnockout = this._config.show_knockout !== false;
+    return TABS.filter((t) => !t.knockout || showKnockout);
   }
 
   _defaultOpenAccordionId() {
@@ -1393,6 +1412,138 @@ class WmTippspielCard extends HTMLElement {
         background: rgba(255,255,255,0.08);
       }
       .num { text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; }
+      .bracket-scroll {
+        overflow-x: auto;
+        padding-bottom: 8px;
+        margin: 0 -4px;
+      }
+      .bracket-tree {
+        display: grid;
+        grid-template-columns: 1fr minmax(160px, 220px) 1fr;
+        gap: 12px;
+        min-width: min(100%, 920px);
+        align-items: stretch;
+      }
+      .bracket-side {
+        display: flex;
+        gap: 10px;
+        min-width: 0;
+      }
+      .bracket-side.left { justify-content: flex-end; }
+      .bracket-side.right { justify-content: flex-start; }
+      .bracket-center {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 12px;
+      }
+      .bracket-round {
+        flex: 1;
+        min-width: 148px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .bracket-round-title {
+        font-size: 0.62rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        opacity: 0.55;
+        text-align: center;
+        margin-bottom: 2px;
+        line-height: 1.2;
+      }
+      .bracket-round-body {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-around;
+        gap: 8px;
+      }
+      .bracket-slot {
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 12px;
+        padding: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        min-width: 140px;
+      }
+      .bracket-slot-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 6px;
+        font-size: 0.62rem;
+        opacity: 0.55;
+      }
+      .bracket-id { font-weight: 700; }
+      .bracket-team-line {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 28px;
+        background: rgba(255,255,255,0.05);
+        border-radius: 999px;
+        padding: 4px 8px;
+        border: 1px solid rgba(255,255,255,0.08);
+      }
+      .bracket-label {
+        flex: 1;
+        font-size: 0.72rem;
+        font-weight: 600;
+        line-height: 1.2;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .bracket-score-row {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+      }
+      .bracket-input {
+        width: 42px;
+        min-height: 34px;
+        text-align: center;
+        font-size: 0.95rem;
+        font-weight: 700;
+      }
+      .bracket-score {
+        min-width: 20px;
+        text-align: center;
+        font-weight: 700;
+      }
+      .bracket-slot-footer {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        align-items: center;
+      }
+      .bracket-slot-footer .badge { font-size: 0.62rem; }
+      .bracket-slot-footer .btn { font-size: 0.68rem; padding: 4px 8px; }
+      .bracket-slot.center-final {
+        border-color: ${accent}66;
+        background: linear-gradient(180deg, ${accent}22, rgba(255,255,255,0.03));
+      }
+      .bracket-mobile {
+        display: none;
+      }
+      @media (max-width: 860px) {
+        .bracket-tree { display: none; }
+        .bracket-mobile {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+        .bracket-mobile-round {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+      }
       .empty {
         text-align: center;
         padding: 28px 16px;
@@ -1500,7 +1651,8 @@ class WmTippspielCard extends HTMLElement {
 
   _renderShell() {
     if (!this.shadowRoot) return;
-    if (this._tab === "tips" && this._selectedPlayer) {
+    if (this._tab === "matches") this._tab = "bracket";
+    if ((this._tab === "tips" || this._tab === "bracket") && this._selectedPlayer) {
       const active = this.shadowRoot.activeElement;
       if (active?.classList?.contains("score-input") && active.getAttribute("data-kind") === "tip") {
         this._captureDraftInputsFromDom(this._selectedPlayer);
@@ -1519,16 +1671,18 @@ class WmTippspielCard extends HTMLElement {
       </div>`;
     } else {
       const { players, matches, standings, tips, results } = this._data();
-      const filtered = this._filteredMatches(matches);
+      const groupMatches = this._groupStageMatches(matches);
+      const knockoutMatches = this._knockoutMatches(matches);
       const playerId = this._selectedPlayer;
       const playerTips = tips[playerId] || {};
 
-      if (!players.length && this._tab === "tips") this._tab = "players";
+      if (!players.length && (this._tab === "tips" || this._tab === "bracket")) this._tab = "players";
+      if (this._tab === "bracket" && this._config.show_knockout === false) this._tab = "tips";
 
       if (this._tab === "standings") body = this._renderStandings(standings);
-      else if (this._tab === "matches") body = this._renderMatchesList(filtered, results);
+      else if (this._tab === "bracket") body = this._renderBracket(knockoutMatches, playerTips, results, playerId, players);
       else if (this._tab === "players") body = this._renderPlayers(players);
-      else body = this._renderTips(filtered, playerTips, results, playerId, players);
+      else body = this._renderTips(groupMatches, playerTips, results, playerId, players);
     }
 
     this.shadowRoot.innerHTML = `
@@ -1555,13 +1709,15 @@ class WmTippspielCard extends HTMLElement {
             }
           </div>
           <div class="tabs">
-            ${TABS.map(
-              (t) =>
-                `<button type="button" class="tab ${this._tab === t.id ? "active" : ""}" data-tab="${t.id}">
+            ${this._visibleTabs()
+              .map(
+                (t) =>
+                  `<button type="button" class="tab ${this._tab === t.id ? "active" : ""}" data-tab="${t.id}">
                   <ha-icon icon="${t.icon}"></ha-icon>
                   <span>${t.label}</span>
                 </button>`
-            ).join("")}
+              )
+              .join("")}
           </div>
           <div class="body" data-match-cols="${this._matchColumns()}">${body}</div>
           ${cfg.show_rules !== false ? `<div class="rules">⚽ 3 Punkte exakt · 1 Punkt richtige Tendenz</div>` : ""}
@@ -1570,7 +1726,7 @@ class WmTippspielCard extends HTMLElement {
       </ha-card>
     `;
 
-    if (this._tab === "tips") {
+    if (this._tab === "tips" || this._tab === "bracket") {
       this.shadowRoot.querySelectorAll("[data-action=save-tip]").forEach((btn) => {
         this._syncTipSaveButton(btn.getAttribute("data-match"));
       });
@@ -1737,25 +1893,167 @@ class WmTippspielCard extends HTMLElement {
     </div>`;
   }
 
-  _renderMatchesList(matches, results) {
-    if (!matches.length) {
-      return `<div class="empty"><div class="empty-icon">📅</div><h3>Keine Spiele</h3><p>Gruppenfilter in den Karten-Einstellungen prüfen.</p></div>`;
+  _renderBracketMatchSlot(m, playerTips, results, playerId, options = {}) {
+    const locked = isPastKickoff(m.kickoff) && !this._isAdmin();
+    const savedTip = playerTips[m.id] || {};
+    const draftTip = this._getDraftTip(playerId, m.id);
+    const tip = { ...savedTip, ...draftTip };
+    const res = results[m.id];
+    const homeVal = tip.home ?? "";
+    const awayVal = tip.away ?? "";
+    const pts = this._tipPoints(tip.home != null && tip.away != null ? tip : null, res);
+    const centerClass = options.center ? " center-final" : "";
+
+    const homeScore = locked
+      ? `<span class="bracket-score">${homeVal !== "" ? homeVal : "–"}</span>`
+      : `<input class="score-input bracket-input" type="number" min="0" max="20" inputmode="numeric" data-match="${m.id}" data-side="home" data-kind="tip" value="${homeVal}" aria-label="Tore Heim" />`;
+    const awayScore = locked
+      ? `<span class="bracket-score">${awayVal !== "" ? awayVal : "–"}</span>`
+      : `<input class="score-input bracket-input" type="number" min="0" max="20" inputmode="numeric" data-match="${m.id}" data-side="away" data-kind="tip" value="${awayVal}" aria-label="Tore Auswärts" />`;
+
+    let footer = "";
+    if (res) footer += `<span class="badge badge-result">${res.home}:${res.away}</span>`;
+    if (pts != null && tip.home !== "" && tip.away !== "") {
+      footer += `<span class="badge badge-points">+${pts}</span>`;
     }
-    const resultIds = Object.keys(results || {});
+    if (!locked) {
+      if (this._autoSaveEnabled()) {
+        const status = this._tipSaveStatus[m.id] || "";
+        if (status) {
+          footer += `<span class="badge tip-status tip-status-${status}" data-match="${m.id}">${
+            status === "pending"
+              ? "…"
+              : status === "saving"
+                ? "Speichern…"
+                : status === "saved"
+                  ? "✓"
+                  : status === "error"
+                    ? "!"
+                    : ""
+          }</span>`;
+        }
+      } else {
+        const canSave = this._tipInputsValid(m.id) || (homeVal !== "" && awayVal !== "");
+        footer += `<button type="button" class="btn" data-action="save-tip" data-match="${m.id}"${canSave ? "" : " disabled"}>Speichern</button>`;
+      }
+    } else {
+      footer += `<span class="badge badge-locked">🔒</span>`;
+    }
+
+    let admin = "";
+    if (this._isAdmin()) admin = this._renderAdminResultControls(m, results);
+
+    return `<div class="bracket-slot${centerClass}" data-match-id="${m.id}">
+      <div class="bracket-slot-head">
+        <span class="bracket-id">${escapeHtml(m.id)}</span>
+        <span>${escapeHtml(m.stage || "")}</span>
+      </div>
+      <div class="bracket-team-line">
+        <span class="bracket-label" title="${escapeHtml(m.home)}">${escapeHtml(m.home)}</span>
+        ${homeScore}
+      </div>
+      <div class="bracket-team-line">
+        <span class="bracket-label" title="${escapeHtml(m.away)}">${escapeHtml(m.away)}</span>
+        ${awayScore}
+      </div>
+      ${footer ? `<div class="bracket-slot-footer">${footer}</div>` : ""}
+      ${admin}
+    </div>`;
+  }
+
+  _renderBracketRoundColumn(title, list, playerTips, results, playerId) {
+    if (!list.length) return "";
+    return `<div class="bracket-round">
+      <div class="bracket-round-title">${escapeHtml(title)}</div>
+      <div class="bracket-round-body">${list
+        .map((m) => this._renderBracketMatchSlot(m, playerTips, results, playerId))
+        .join("")}</div>
+    </div>`;
+  }
+
+  _renderBracketSide(rounds, side, playerTips, results, playerId) {
+    return `<div class="bracket-side ${side}">${rounds
+      .map(({ title, list }) => this._renderBracketRoundColumn(title, list, playerTips, results, playerId))
+      .join("")}</div>`;
+  }
+
+  _renderBracketMobile(rounds, playerTips, results, playerId) {
+    return `<div class="bracket-mobile">${rounds
+      .map(({ title, list }) => {
+        if (!list.length) return "";
+        return `<div class="bracket-mobile-round">
+          <div class="bracket-round-title">${escapeHtml(title)}</div>
+          ${list.map((m) => this._renderBracketMatchSlot(m, playerTips, results, playerId)).join("")}
+        </div>`;
+      })
+      .join("")}</div>`;
+  }
+
+  _renderBracket(knockoutMatches, playerTips, results, playerId, players) {
+    if (!players.length) {
+      return `<div class="empty">
+        <div class="empty-icon">👥</div>
+        <h3>Spieler fehlen</h3>
+        <p>Wechsle zum Tab <strong>Spieler</strong> und füge Mitspieler hinzu.</p>
+        <button type="button" class="btn" data-tab="players" style="margin-top:12px">Zu Spieler wechseln</button>
+      </div>`;
+    }
+    if (!playerId) {
+      return `<div class="empty"><div class="empty-icon">👤</div><h3>Tipper wählen</h3><p>Oben einen Spieler auswählen.</p></div>`;
+    }
+    if (!knockoutMatches.length) {
+      return `<div class="empty"><div class="empty-icon">🏟️</div><h3>Keine K.o.-Spiele</h3><p>K.o.-Runden in den Karten-Einstellungen aktivieren.</p></div>`;
+    }
+
+    const { rounds } = partitionMatches(knockoutMatches);
+    const treeRounds = [];
+    const mobileRounds = [];
+    for (const stage of KNOCKOUT_ROUNDS) {
+      const list = rounds.get(stage) || [];
+      if (!list.length) continue;
+      if (stage === "Finale" || stage === "Spiel um Platz 3") continue;
+      const split = splitRoundMatches(list);
+      treeRounds.push({ title: stage, left: split.left, right: split.right, all: list });
+      mobileRounds.push({ title: stage, list });
+    }
+
+    const finale = (rounds.get("Finale") || [])[0];
+    const third = (rounds.get("Spiel um Platz 3") || [])[0];
+    if (finale) mobileRounds.push({ title: "Finale", list: [finale] });
+    if (third) mobileRounds.push({ title: "Spiel um Platz 3", list: [third] });
+
+    const resultIds = Object.keys(results || {}).filter((id) => knockoutMatches.some((m) => m.id === id));
     let adminBar = "";
     if (this._isAdmin() && resultIds.length) {
       adminBar = `<div class="results-admin-bar">
-        <span>${resultIds.length} Ergebnis${resultIds.length === 1 ? "" : "se"} gespeichert: <strong>${escapeHtml(resultIds.join(", "))}</strong></span>
+        <span>${resultIds.length} K.o.-Ergebnis${resultIds.length === 1 ? "" : "se"}</span>
         <button type="button" class="btn btn-danger" data-action="clear-all-results">Alle Ergebnisse löschen</button>
       </div>`;
     }
-    return adminBar + this._renderMatchAccordions(matches, (m) => {
-      const res = results[m.id];
-      const scoreHtml = `<span class="score-static">${res ? res.home : "–"}</span><span class="sep">:</span><span class="score-static">${res ? res.away : "–"}</span>`;
-      let extra = res ? `<span class="badge badge-result">✓ Endstand ${res.home}:${res.away}</span>` : "";
-      extra += this._renderAdminResultControls(m, results);
-      return this._renderMatchTeams(m, scoreHtml, extra);
-    });
+
+    const leftSide = this._renderBracketSide(
+      treeRounds.map((r) => ({ title: r.title, list: r.left })),
+      "left",
+      playerTips,
+      results,
+      playerId
+    );
+    const rightSide = this._renderBracketSide(
+      treeRounds.map((r) => ({ title: r.title, list: r.right })).reverse(),
+      "right",
+      playerTips,
+      results,
+      playerId
+    );
+    const center = `<div class="bracket-center">
+      ${finale ? this._renderBracketMatchSlot(finale, playerTips, results, playerId, { center: true }) : ""}
+      ${third ? this._renderBracketMatchSlot(third, playerTips, results, playerId) : ""}
+    </div>`;
+
+    return `${adminBar}<div class="bracket-scroll">
+      <div class="bracket-tree">${leftSide}${center}${rightSide}</div>
+      ${this._renderBracketMobile(mobileRounds, playerTips, results, playerId)}
+    </div>`;
   }
 
   _tipPoints(tip, result) {
