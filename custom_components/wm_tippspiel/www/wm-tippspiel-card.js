@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.3.12";
+const WM_TIPPSPIEL_CARD_VERSION = "1.3.13";
 
 const ALL_GROUPS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 const KNOCKOUT_ROUNDS = [
@@ -517,6 +517,12 @@ class WmTippspielCard extends HTMLElement {
         this._saveResult(saveResult);
         return;
       }
+      const clearResult = ev.target.closest("[data-action=clear-result]");
+      if (clearResult) {
+        ev.preventDefault();
+        this._clearResult(clearResult);
+        return;
+      }
       const addPlayer = ev.target.closest("[data-action=add-player-card]");
       if (addPlayer) {
         ev.preventDefault();
@@ -656,6 +662,34 @@ class WmTippspielCard extends HTMLElement {
     const results = { ...(attrs.results || {}), [matchId]: { home, away } };
     this._state = { ...this._state, attributes: { ...attrs, results } };
     this._stateFingerprintCache = this._stateFingerprint(this._state);
+  }
+
+  _applyClearedResult(matchId) {
+    if (!this._state?.attributes) return;
+    const attrs = this._state.attributes;
+    const results = { ...(attrs.results || {}) };
+    delete results[matchId];
+    this._state = { ...this._state, attributes: { ...attrs, results } };
+    this._stateFingerprintCache = this._stateFingerprint(this._state);
+  }
+
+  _renderAdminResultControls(m, results) {
+    if (!this._isAdmin()) return "";
+    const res = results[m.id];
+    const draft = this._draftResults[m.id] || {};
+    const homeVal = draft.home ?? res?.home ?? "";
+    const awayVal = draft.away ?? res?.away ?? "";
+    let html = `<div class="admin-row">
+      <span class="admin-label">${res ? "Ergebnis bearbeiten" : "Ergebnis eintragen"}</span>
+      <input class="score-input" type="number" min="0" max="20" data-match="${m.id}" data-side="home" data-kind="result" value="${homeVal}" placeholder="0" />
+      <span class="sep">:</span>
+      <input class="score-input" type="number" min="0" max="20" data-match="${m.id}" data-side="away" data-kind="result" value="${awayVal}" placeholder="0" />
+      <button type="button" class="btn btn-secondary" data-action="save-result" data-match="${m.id}">Speichern</button>`;
+    if (res) {
+      html += `<button type="button" class="btn btn-danger" data-action="clear-result" data-match="${m.id}">Ergebnis löschen</button>`;
+    }
+    html += `</div>`;
+    return html;
   }
 
   _tipInputsValid(matchId) {
@@ -1179,6 +1213,11 @@ class WmTippspielCard extends HTMLElement {
         color: inherit;
         border: 1px solid rgba(255,255,255,0.12);
       }
+      .btn-danger {
+        background: rgba(239,68,68,0.15);
+        color: #fca5a5;
+        border: 1px solid rgba(239,68,68,0.35);
+      }
       .admin-row {
         margin-top: 12px;
         padding-top: 12px;
@@ -1658,7 +1697,8 @@ class WmTippspielCard extends HTMLElement {
     return this._renderMatchAccordions(matches, (m) => {
       const res = results[m.id];
       const scoreHtml = `<span class="score-static">${res ? res.home : "–"}</span><span class="sep">:</span><span class="score-static">${res ? res.away : "–"}</span>`;
-      const extra = res ? `<span class="badge badge-result">✓ Endstand ${res.home}:${res.away}</span>` : "";
+      let extra = res ? `<span class="badge badge-result">✓ Endstand ${res.home}:${res.away}</span>` : "";
+      extra += this._renderAdminResultControls(m, results);
       return this._renderMatchTeams(m, scoreHtml, extra);
     });
   }
@@ -1730,13 +1770,7 @@ class WmTippspielCard extends HTMLElement {
       }
 
       if (this._isAdmin()) {
-        extra += `<div class="admin-row">
-          <span class="admin-label">Ergebnis eintragen</span>
-          <input class="score-input" type="number" min="0" max="20" data-match="${m.id}" data-side="home" data-kind="result" value="${(this._draftResults[m.id] || res || {}).home ?? ""}" placeholder="0" />
-          <span class="sep">:</span>
-          <input class="score-input" type="number" min="0" max="20" data-match="${m.id}" data-side="away" data-kind="result" value="${(this._draftResults[m.id] || res || {}).away ?? ""}" placeholder="0" />
-          <button type="button" class="btn btn-secondary" data-action="save-result" data-match="${m.id}">Speichern</button>
-        </div>`;
+        extra += this._renderAdminResultControls(m, results);
       }
 
       return this._renderMatchTeams(m, scoreHtml, extra);
@@ -1844,6 +1878,26 @@ class WmTippspielCard extends HTMLElement {
     } finally {
       btn.disabled = false;
       btn.textContent = "Speichern";
+    }
+  }
+
+  async _clearResult(btn) {
+    const matchId = btn.getAttribute("data-match");
+    if (!matchId) return;
+    btn.disabled = true;
+    btn.textContent = "Löschen…";
+    try {
+      await this._callService("clear_result", { match_id: matchId });
+      this._applyClearedResult(matchId);
+      delete this._draftResults[matchId];
+      this._renderShell();
+      this._showToast("Ergebnis gelöscht ✓", "success");
+    } catch (err) {
+      console.error("[wm-tippspiel-card] clear_result failed:", err);
+      this._showToast(`Löschen fehlgeschlagen: ${err?.message || err}`, "error");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Ergebnis löschen";
     }
   }
 }

@@ -43,6 +43,7 @@ ATTR_NAME = "name"
 
 SERVICE_SET_TIP = "set_tip"
 SERVICE_SET_RESULT = "set_result"
+SERVICE_CLEAR_RESULT = "clear_result"
 SERVICE_ADD_PLAYER = "add_player"
 SERVICE_REMOVE_PLAYER = "remove_player"
 SERVICE_SYNC_RESULTS = "sync_results"

@@ -23,6 +23,7 @@ from .const import (
     CONF_TITLE,
     DOMAIN,
     SERVICE_ADD_PLAYER,
+    SERVICE_CLEAR_RESULT,
     SERVICE_REMOVE_PLAYER,
     SERVICE_SET_RESULT,
     SERVICE_SET_TIP,
@@ -125,6 +126,13 @@ def _register_services(hass: HomeAssistant) -> None:
         await store.async_save()
         _async_notify(hass)
 
+    async def _clear_result(call: ServiceCall) -> None:
+        store = get_store(hass, call.data.get("entry_id"))
+        if not store.clear_result(call.data[ATTR_MATCH_ID]):
+            raise ValueError(f"Kein Ergebnis für Spiel: {call.data[ATTR_MATCH_ID]}")
+        await store.async_save()
+        _async_notify(hass)
+
     async def _add_player(call: ServiceCall) -> None:
         entry_id = call.data.get("entry_id")
         if not entry_id:
@@ -194,6 +202,17 @@ def _register_services(hass: HomeAssistant) -> None:
                 vol.Required(ATTR_MATCH_ID): cv.string,
                 vol.Required(ATTR_HOME): vol.All(vol.Coerce(int), vol.Range(min=0, max=20)),
                 vol.Required(ATTR_AWAY): vol.All(vol.Coerce(int), vol.Range(min=0, max=20)),
+            }
+        ),
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_CLEAR_RESULT,
+        _clear_result,
+        schema=vol.Schema(
+            {
+                vol.Optional("entry_id"): cv.string,
+                vol.Required(ATTR_MATCH_ID): cv.string,
             }
         ),
     )

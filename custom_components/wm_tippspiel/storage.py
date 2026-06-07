@@ -154,6 +154,14 @@ class WmTippspielStore:
         results = self._data.setdefault("results", {})
         results[match_id] = {"home": int(home), "away": int(away)}
 
+    def clear_result(self, match_id: str) -> bool:
+        results = self._data.get("results", {})
+        if match_id not in results:
+            return False
+        del results[match_id]
+        self._data["results"] = results
+        return True
+
     def get_tip(self, player_id: str, match_id: str) -> dict[str, int] | None:
         return self._data.get("tips", {}).get(player_id, {}).get(match_id)
 

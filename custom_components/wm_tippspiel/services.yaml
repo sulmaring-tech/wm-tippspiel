@@ -29,6 +29,15 @@ set_result:
     away:
       name: Tore Auswärts
 
+clear_result:
+  name: Ergebnis löschen
+  description: Entfernt ein eingetragenes Spielergebnis – Punkte für dieses Spiel werden zurückgesetzt.
+  fields:
+    entry_id:
+      name: Konfigurations-ID
+    match_id:
+      name: Spiel-ID
+
 add_player:
   name: Spieler hinzufügen
   fields:
