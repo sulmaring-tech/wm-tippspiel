@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.6.2";
+const WM_TIPPSPIEL_CARD_VERSION = "1.6.3";
 
 const ALL_GROUPS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 const KNOCKOUT_ROUNDS = [
@@ -122,11 +122,6 @@ function tipStatusLabel(status) {
   if (status === "locked") return "Gesperrt";
   if (status === "exact") return "Exakter Tipp";
   return "";
-}
-
-function parseWinnerRef(name) {
-  const match = /^Sieger\s+(.+)$/.exec(String(name || "").trim());
-  return match ? match[1] : null;
 }
 
 function normalizeGroups(groups) {
@@ -1640,21 +1635,6 @@ class WmTippspielCard extends HTMLElement {
         gap: 12px;
         min-width: min(100%, 920px);
         align-items: stretch;
-        position: relative;
-        padding: 8px 0;
-      }
-      .bracket-svg {
-        position: absolute;
-        inset: 0;
-        width: 100%;
-        height: 100%;
-        pointer-events: none;
-        z-index: 0;
-      }
-      .bracket-tree > .bracket-side,
-      .bracket-tree > .bracket-center {
-        position: relative;
-        z-index: 1;
       }
       .bracket-side {
         display: flex;
@@ -1973,26 +1953,6 @@ class WmTippspielCard extends HTMLElement {
         this._syncTipSaveButton(btn.getAttribute("data-match"));
       });
     }
-    if (this._tab === "bracket") {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => this._drawBracketConnectors());
-      });
-    }
-  }
-
-  _ensureBracketResizeObserver() {
-    if (this._bracketResizeObserver) return;
-    this._bracketResizeObserver = new ResizeObserver(() => {
-      if (this._tab === "bracket") this._drawBracketConnectors();
-    });
-  }
-
-  _watchBracketTree() {
-    this._ensureBracketResizeObserver();
-    const tree = this.shadowRoot?.querySelector(".bracket-tree");
-    if (!tree) return;
-    this._bracketResizeObserver.disconnect();
-    this._bracketResizeObserver.observe(tree);
   }
 
   _renderPlayers(players) {
@@ -2331,7 +2291,7 @@ class WmTippspielCard extends HTMLElement {
     let admin = "";
     if (this._isAdmin()) admin = this._renderAdminResultControls(m, results);
 
-    return `<div class="bracket-slot tip-status-${status}${centerClass}" data-match-id="${m.id}" data-bracket-slot="1">
+    return `<div class="bracket-slot tip-status-${status}${centerClass}" data-match-id="${m.id}">
       <div class="bracket-slot-head">
         <span class="bracket-id">${escapeHtml(m.id)}</span>
         <span>${escapeHtml(m.stage || "")}</span>
@@ -2441,147 +2401,9 @@ class WmTippspielCard extends HTMLElement {
     </div>`;
 
     return `${adminBar}<div class="bracket-scroll">
-      <div class="bracket-tree">
-        <svg class="bracket-svg" aria-hidden="true"></svg>
-        ${leftSide}${center}${rightSide}
-      </div>
+      <div class="bracket-tree">${leftSide}${center}${rightSide}</div>
       ${this._renderBracketMobile(mobileRounds, playerTips, results, playerId)}
     </div>`;
-  }
-
-  _drawBracketConnectors() {
-    if (this._tab !== "bracket") return;
-    const tree = this.shadowRoot?.querySelector(".bracket-tree");
-    const svg = tree?.querySelector(".bracket-svg");
-    if (!tree || !svg) return;
-
-    const treeRect = tree.getBoundingClientRect();
-    if (!treeRect.width || !treeRect.height) return;
-
-    svg.innerHTML = "";
-    svg.setAttribute("viewBox", `0 0 ${treeRect.width} ${treeRect.height}`);
-    svg.setAttribute("width", String(treeRect.width));
-    svg.setAttribute("height", String(treeRect.height));
-
-    const STUB = 12;
-    const FORK = 6;
-    const stroke = "rgba(255,255,255,0.22)";
-    const centerX = treeRect.width / 2;
-
-    const slotMap = new Map();
-    tree.querySelectorAll("[data-bracket-slot]").forEach((el) => {
-      const id = el.getAttribute("data-match-id");
-      if (id) slotMap.set(id, el);
-    });
-
-    const slotBox = (el) => {
-      const r = el.getBoundingClientRect();
-      return {
-        cx: r.left + r.width / 2 - treeRect.left,
-        cy: r.top + r.height / 2 - treeRect.top,
-        right: r.right - treeRect.left,
-        left: r.left - treeRect.left,
-      };
-    };
-
-    const addPath = (d) => {
-      const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      p.setAttribute("d", d);
-      p.setAttribute("fill", "none");
-      p.setAttribute("stroke", stroke);
-      p.setAttribute("stroke-width", "2");
-      p.setAttribute("stroke-linecap", "square");
-      svg.appendChild(p);
-    };
-
-    const connectPairLeft = (a, b, target) => {
-      const pa = slotBox(a);
-      const pb = slotBox(b);
-      const pt = slotBox(target);
-      const xFork = Math.max(pa.right, pb.right) + STUB;
-      const xJoin = xFork + FORK;
-      const yMid = (pa.cy + pb.cy) / 2;
-
-      addPath(`M ${pa.right} ${pa.cy} H ${xFork}`);
-      addPath(`M ${pb.right} ${pb.cy} H ${xFork}`);
-      addPath(`M ${xFork} ${pa.cy} V ${pb.cy}`);
-      addPath(`M ${xFork} ${yMid} H ${xJoin}`);
-      addPath(`M ${xJoin} ${yMid} V ${pt.cy}`);
-      addPath(`M ${xJoin} ${pt.cy} H ${pt.left}`);
-    };
-
-    const connectPairRight = (a, b, target) => {
-      const pa = slotBox(a);
-      const pb = slotBox(b);
-      const pt = slotBox(target);
-      const xFork = Math.min(pa.left, pb.left) - STUB;
-      const xJoin = xFork - FORK;
-      const yMid = (pa.cy + pb.cy) / 2;
-
-      addPath(`M ${pa.left} ${pa.cy} H ${xFork}`);
-      addPath(`M ${pb.left} ${pb.cy} H ${xFork}`);
-      addPath(`M ${xFork} ${pa.cy} V ${pb.cy}`);
-      addPath(`M ${xFork} ${yMid} H ${xJoin}`);
-      addPath(`M ${xJoin} ${yMid} V ${pt.cy}`);
-      addPath(`M ${xJoin} ${pt.cy} H ${pt.right}`);
-    };
-
-    const connectSingleLeft = (from, target) => {
-      const pf = slotBox(from);
-      const pt = slotBox(target);
-      const xMid = (pf.right + pt.left) / 2;
-      addPath(`M ${pf.right} ${pf.cy} H ${xMid} V ${pt.cy} H ${pt.left}`);
-    };
-
-    const connectSingleRight = (from, target) => {
-      const pf = slotBox(from);
-      const pt = slotBox(target);
-      const xMid = (pf.left + pt.right) / 2;
-      addPath(`M ${pf.left} ${pf.cy} H ${xMid} V ${pt.cy} H ${pt.right}`);
-    };
-
-    const connectSingle = (from, target) => {
-      const pf = slotBox(from);
-      const pt = slotBox(target);
-      if (pf.cx <= pt.cx) connectSingleLeft(from, target);
-      else connectSingleRight(from, target);
-    };
-
-    const knockoutMatches = (this._data().matches || []).filter((m) => !m.group);
-    const drawn = new Set();
-
-    for (const match of knockoutMatches) {
-      const parents = [parseWinnerRef(match.home), parseWinnerRef(match.away)].filter(Boolean);
-      const targetEl = slotMap.get(match.id);
-      if (!targetEl || !parents.length) continue;
-
-      if (parents.length === 2) {
-        const key = `${parents[0]}|${parents[1]}|${match.id}`;
-        if (drawn.has(key)) continue;
-        drawn.add(key);
-
-        const a = slotMap.get(parents[0]);
-        const b = slotMap.get(parents[1]);
-        if (!a || !b) continue;
-
-        const pa = slotBox(a);
-        const pb = slotBox(b);
-        const aLeft = pa.cx < centerX;
-        const bLeft = pb.cx < centerX;
-
-        if (aLeft && bLeft) connectPairLeft(a, b, targetEl);
-        else if (!aLeft && !bLeft) connectPairRight(a, b, targetEl);
-        else {
-          connectSingle(a, targetEl);
-          connectSingle(b, targetEl);
-        }
-      } else {
-        const parentEl = slotMap.get(parents[0]);
-        if (parentEl) connectSingle(parentEl, targetEl);
-      }
-    }
-
-    this._watchBracketTree();
   }
 
   _tipPoints(tip, result) {
