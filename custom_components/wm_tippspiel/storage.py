@@ -47,13 +47,31 @@ class WmTippspielStore:
         self._data: dict[str, Any] = _empty_store()
         self._lock = asyncio.Lock()
 
+    def _purge_orphan_tips(self) -> bool:
+        """Entfernt Tipps ohne zugehörigen Spieler (z. B. nach fehlgeschlagenem Löschen)."""
+        valid_ids = {p.get("id") for p in self.get_players() if p.get("id")}
+        tips = self._data.get("tips", {})
+        if not isinstance(tips, dict):
+            self._data["tips"] = {}
+            return True
+        orphan_keys = [key for key in tips if key not in valid_ids]
+        if not orphan_keys:
+            return False
+        for key in orphan_keys:
+            tips.pop(key, None)
+        self._data["tips"] = tips
+        return True
+
     async def async_load(self) -> None:
         async with self._lock:
             loaded = await self._store.async_load()
             self._data = loaded if loaded else _empty_store()
             if not self._data.get("matches"):
                 self._data["matches"] = _default_matches()
-            elif self._sync_matches_from_bundle():
+            changed = self._purge_orphan_tips()
+            if self._sync_matches_from_bundle():
+                changed = True
+            if changed:
                 await self._store.async_save(self._data)
 
     def _sync_matches_from_bundle(self) -> bool:
@@ -119,6 +137,7 @@ class WmTippspielStore:
         tips = self._data.get("tips", {})
         tips.pop(player_id, None)
         self._data["tips"] = tips
+        self._purge_orphan_tips()
         return True
 
     def set_tip(self, player_id: str, match_id: str, home: int, away: int) -> None:

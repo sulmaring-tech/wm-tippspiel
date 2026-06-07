@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.3.11";
+const WM_TIPPSPIEL_CARD_VERSION = "1.3.12";
 
 const ALL_GROUPS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 const KNOCKOUT_ROUNDS = [
@@ -486,14 +486,22 @@ class WmTippspielCard extends HTMLElement {
       }
       const selectRow = ev.target.closest("[data-action=select-player-row]");
       if (selectRow) {
-        this._selectedPlayer = selectRow.getAttribute("data-player-id");
+        const nextId = selectRow.getAttribute("data-player-id");
+        if (this._selectedPlayer && this._selectedPlayer !== nextId) {
+          this._captureDraftInputsFromDom(this._selectedPlayer);
+        }
+        this._selectedPlayer = nextId;
         this._tab = "tips";
         this._renderShell();
         return;
       }
       const playerBtn = ev.target.closest(".player-chip[data-player-id]");
       if (playerBtn) {
-        this._selectedPlayer = playerBtn.getAttribute("data-player-id");
+        const nextId = playerBtn.getAttribute("data-player-id");
+        if (this._selectedPlayer && this._selectedPlayer !== nextId) {
+          this._captureDraftInputsFromDom(this._selectedPlayer);
+        }
+        this._selectedPlayer = nextId;
         this._renderShell();
         return;
       }
@@ -595,18 +603,17 @@ class WmTippspielCard extends HTMLElement {
     });
   }
 
-  _captureDraftInputsFromDom() {
-    if (!this.shadowRoot) return;
-    if (this._selectedPlayer) {
-      const playerDrafts = this._draftTipsForPlayer(this._selectedPlayer);
-      this.shadowRoot.querySelectorAll('.score-input[data-kind="tip"]').forEach((inp) => {
-        const matchId = inp.getAttribute("data-match");
-        const side = inp.getAttribute("data-side");
-        if (!matchId || !side) return;
-        playerDrafts[matchId] = playerDrafts[matchId] || {};
-        playerDrafts[matchId][side] = inp.value;
-      });
-    }
+  _captureDraftInputsFromDom(forPlayerId = null) {
+    const playerId = forPlayerId ?? this._selectedPlayer;
+    if (!this.shadowRoot || !playerId) return;
+    const playerDrafts = this._draftTipsForPlayer(playerId);
+    this.shadowRoot.querySelectorAll('.score-input[data-kind="tip"]').forEach((inp) => {
+      const matchId = inp.getAttribute("data-match");
+      const side = inp.getAttribute("data-side");
+      if (!matchId || !side) return;
+      playerDrafts[matchId] = playerDrafts[matchId] || {};
+      playerDrafts[matchId][side] = inp.value;
+    });
     this.shadowRoot.querySelectorAll('.score-input[data-kind="result"]').forEach((inp) => {
       const matchId = inp.getAttribute("data-match");
       const side = inp.getAttribute("data-side");
@@ -614,6 +621,24 @@ class WmTippspielCard extends HTMLElement {
       this._draftResults[matchId] = this._draftResults[matchId] || {};
       this._draftResults[matchId][side] = inp.value;
     });
+  }
+
+  _pruneDraftTips(validPlayerIds = null) {
+    const ids =
+      validPlayerIds ||
+      new Set((this._state?.attributes?.players || []).map((p) => p.id));
+    for (const pid of Object.keys(this._draftTips)) {
+      if (!ids.has(pid)) delete this._draftTips[pid];
+    }
+  }
+
+  _filterTipsForPlayers(tips, players) {
+    const validIds = new Set((players || []).map((p) => p.id));
+    const filtered = {};
+    for (const [pid, playerTips] of Object.entries(tips || {})) {
+      if (validIds.has(pid)) filtered[pid] = playerTips;
+    }
+    return filtered;
   }
 
   _applySavedTip(matchId, home, away) {
@@ -725,6 +750,7 @@ class WmTippspielCard extends HTMLElement {
     this._stateFingerprintCache = fp;
     this._state = state;
     this._ensurePlayer();
+    this._pruneDraftTips();
     if (changed || !this._shellReady) {
       this._renderShell();
       this._shellReady = true;
@@ -753,11 +779,12 @@ class WmTippspielCard extends HTMLElement {
 
   _data() {
     const a = this._state?.attributes || {};
+    const players = a.players || [];
     return {
       standings: a.standings || [],
-      players: a.players || [],
+      players,
       matches: a.matches || [],
-      tips: a.tips || {},
+      tips: this._filterTipsForPlayers(a.tips || {}, players),
       results: a.results || {},
     };
   }
@@ -1388,7 +1415,12 @@ class WmTippspielCard extends HTMLElement {
 
   _renderShell() {
     if (!this.shadowRoot) return;
-    this._captureDraftInputsFromDom();
+    if (this._tab === "tips" && this._selectedPlayer) {
+      const active = this.shadowRoot.activeElement;
+      if (active?.classList?.contains("score-input") && active.getAttribute("data-kind") === "tip") {
+        this._captureDraftInputsFromDom(this._selectedPlayer);
+      }
+    }
     const cfg = this._config;
     const missing = !this._hass?.states?.[cfg.entity];
 
@@ -1533,17 +1565,18 @@ class WmTippspielCard extends HTMLElement {
     try {
       await this._callService("remove_player", { player_id: playerId });
       this._pendingRemovePlayerId = null;
+      delete this._draftTips[playerId];
       if (this._selectedPlayer === playerId) this._selectedPlayer = null;
       if (this._state?.attributes) {
         const attrs = { ...this._state.attributes };
         attrs.players = (attrs.players || []).filter((p) => p.id !== playerId);
-        const tips = { ...(attrs.tips || {}) };
-        delete tips[playerId];
-        attrs.tips = tips;
+        attrs.tips = this._filterTipsForPlayers(attrs.tips || {}, attrs.players);
         attrs.standings = (attrs.standings || []).filter((s) => s.id !== playerId);
         this._state = { ...this._state, attributes: attrs };
         this._stateFingerprintCache = this._stateFingerprint(this._state);
       }
+      this._pruneDraftTips();
+      this._ensurePlayer();
       this._renderShell();
       this._showToast(`${name} entfernt`, "success");
     } catch (err) {
