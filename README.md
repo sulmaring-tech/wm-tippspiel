@@ -10,8 +10,23 @@ Tippspiel für die **Fußball-WM 2026** als Home-Assistant-Integration mit Lovel
 - **Automatische Punktevergabe**: 3 Punkte exakt, 1 Punkt richtige Tendenz
 - **Rangliste** als Sensor und in der Karte
 - **Gruppenspiele A–H** der WM 2026 vorinstalliert (48 Spiele der Gruppen A–H)
+- **Updates** über den Home-Assistant-Update-Manager (ab v1.2.0)
 
-## Installation
+## Updates
+
+Ab Version **1.2.0** erscheint ein Update-Eintrag unter:
+
+**Einstellungen → System → Updates**
+
+Entity: `update.<tippspiel_name>_software` (am WM-Tippspiel-Gerät)
+
+- Vergleicht die installierte Version mit dem neuesten **[GitHub Release](https://github.com/sulmaring-tech/wm-tippspiel/releases)**
+- Update kann direkt in Home Assistant installiert werden
+- Nach dem Update ist ein **Neustart** von Home Assistant erforderlich
+
+Bei Installation über **HACS** erscheint zusätzlich ein HACS-Update-Eintrag. Beide funktionieren parallel.
+
+Neue Versionen werden als Git-Tags veröffentlicht (`v1.2.0`, `v1.2.1`, …).
 
 ### HACS (empfohlen)
 
@@ -33,7 +48,7 @@ Tippspiel für die **Fußball-WM 2026** als Home-Assistant-Integration mit Lovel
 Ressource registrieren (Einstellungen → Dashboards → Ressourcen):
 
 ```yaml
-url: /wm_tippspiel/wm-tippspiel-card.js?v=1.0.1
+url: /wm_tippspiel/wm-tippspiel-card.js?v=1.2.0
 type: module
 ```
 
