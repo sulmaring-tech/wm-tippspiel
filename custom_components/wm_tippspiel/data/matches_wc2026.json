@@ -53,5 +53,42 @@
   {"id": "H3", "stage": "Gruppenspiel", "group": "H", "home": "Uruguay", "away": "Kap Verde", "kickoff": "2026-06-22T14:00:00", "venue": "Miami"},
   {"id": "H4", "stage": "Gruppenspiel", "group": "H", "home": "Spanien", "away": "Saudi-Arabien", "kickoff": "2026-06-23T17:00:00", "venue": "Atlanta"},
   {"id": "H5", "stage": "Gruppenspiel", "group": "H", "home": "Uruguay", "away": "Spanien", "kickoff": "2026-06-27T14:00:00", "venue": "Guadalajara"},
-  {"id": "H6", "stage": "Gruppenspiel", "group": "H", "home": "Kap Verde", "away": "Saudi-Arabien", "kickoff": "2026-06-27T20:00:00", "venue": "Houston"}
+  {"id": "H6", "stage": "Gruppenspiel", "group": "H", "home": "Kap Verde", "away": "Saudi-Arabien", "kickoff": "2026-06-27T20:00:00", "venue": "Houston"},
+
+  {"id": "R32-1", "stage": "Sechzehntelfinale", "home": "1. Gruppe A", "away": "2. Gruppe B", "kickoff": "2026-06-28T17:00:00", "venue": "Los Angeles"},
+  {"id": "R32-2", "stage": "Sechzehntelfinale", "home": "1. Gruppe C", "away": "2. Gruppe D", "kickoff": "2026-06-28T20:00:00", "venue": "Boston"},
+  {"id": "R32-3", "stage": "Sechzehntelfinale", "home": "1. Gruppe E", "away": "2. Gruppe F", "kickoff": "2026-06-29T17:00:00", "venue": "Monterrey"},
+  {"id": "R32-4", "stage": "Sechzehntelfinale", "home": "1. Gruppe G", "away": "2. Gruppe H", "kickoff": "2026-06-29T20:00:00", "venue": "Houston"},
+  {"id": "R32-5", "stage": "Sechzehntelfinale", "home": "1. Gruppe B", "away": "2. Gruppe A", "kickoff": "2026-06-30T17:00:00", "venue": "San Francisco"},
+  {"id": "R32-6", "stage": "Sechzehntelfinale", "home": "1. Gruppe D", "away": "2. Gruppe C", "kickoff": "2026-06-30T20:00:00", "venue": "Seattle"},
+  {"id": "R32-7", "stage": "Sechzehntelfinale", "home": "1. Gruppe F", "away": "2. Gruppe E", "kickoff": "2026-07-01T14:00:00", "venue": "Dallas"},
+  {"id": "R32-8", "stage": "Sechzehntelfinale", "home": "1. Gruppe H", "away": "2. Gruppe G", "kickoff": "2026-07-01T17:00:00", "venue": "Miami"},
+  {"id": "R32-9", "stage": "Sechzehntelfinale", "home": "3. Gruppe A/B/C", "away": "3. Gruppe D/E/F", "kickoff": "2026-07-02T17:00:00", "venue": "Atlanta"},
+  {"id": "R32-10", "stage": "Sechzehntelfinale", "home": "3. Gruppe G/H", "away": "3. Gruppe A/B/C", "kickoff": "2026-07-02T20:00:00", "venue": "Philadelphia"},
+  {"id": "R32-11", "stage": "Sechzehntelfinale", "home": "3. Gruppe D/E/F", "away": "3. Gruppe G/H", "kickoff": "2026-07-03T14:00:00", "venue": "Kansas City"},
+  {"id": "R32-12", "stage": "Sechzehntelfinale", "home": "Sieger R32-1", "away": "Sieger R32-2", "kickoff": "2026-07-03T17:00:00", "venue": "New York/New Jersey"},
+  {"id": "R32-13", "stage": "Sechzehntelfinale", "home": "Sieger R32-3", "away": "Sieger R32-4", "kickoff": "2026-07-03T20:00:00", "venue": "Toronto"},
+  {"id": "R32-14", "stage": "Sechzehntelfinale", "home": "Sieger R32-5", "away": "Sieger R32-6", "kickoff": "2026-07-04T14:00:00", "venue": "Vancouver"},
+  {"id": "R32-15", "stage": "Sechzehntelfinale", "home": "Sieger R32-7", "away": "Sieger R32-8", "kickoff": "2026-07-04T17:00:00", "venue": "Guadalajara"},
+  {"id": "R32-16", "stage": "Sechzehntelfinale", "home": "Sieger R32-9", "away": "Sieger R32-10", "kickoff": "2026-07-04T20:00:00", "venue": "Mexico City"},
+
+  {"id": "R16-1", "stage": "Achtelfinale", "home": "Sieger R32-12", "away": "Sieger R32-13", "kickoff": "2026-07-06T17:00:00", "venue": "Dallas"},
+  {"id": "R16-2", "stage": "Achtelfinale", "home": "Sieger R32-14", "away": "Sieger R32-15", "kickoff": "2026-07-06T20:00:00", "venue": "Philadelphia"},
+  {"id": "R16-3", "stage": "Achtelfinale", "home": "Sieger R32-11", "away": "Sieger R32-16", "kickoff": "2026-07-07T17:00:00", "venue": "Seattle"},
+  {"id": "R16-4", "stage": "Achtelfinale", "home": "Sieger R32-1", "away": "Sieger R32-5", "kickoff": "2026-07-07T20:00:00", "venue": "Atlanta"},
+  {"id": "R16-5", "stage": "Achtelfinale", "home": "Sieger R16-1", "away": "Sieger R16-2", "kickoff": "2026-07-08T17:00:00", "venue": "Houston"},
+  {"id": "R16-6", "stage": "Achtelfinale", "home": "Sieger R16-3", "away": "Sieger R16-4", "kickoff": "2026-07-08T20:00:00", "venue": "Boston"},
+  {"id": "R16-7", "stage": "Achtelfinale", "home": "Sieger R32-3", "away": "Sieger R32-7", "kickoff": "2026-07-09T17:00:00", "venue": "Los Angeles"},
+  {"id": "R16-8", "stage": "Achtelfinale", "home": "Sieger R32-9", "away": "Sieger R32-13", "kickoff": "2026-07-09T20:00:00", "venue": "Miami"},
+
+  {"id": "QF-1", "stage": "Viertelfinale", "home": "Sieger R16-1", "away": "Sieger R16-2", "kickoff": "2026-07-11T17:00:00", "venue": "Boston"},
+  {"id": "QF-2", "stage": "Viertelfinale", "home": "Sieger R16-3", "away": "Sieger R16-4", "kickoff": "2026-07-11T20:00:00", "venue": "Los Angeles"},
+  {"id": "QF-3", "stage": "Viertelfinale", "home": "Sieger R16-5", "away": "Sieger R16-6", "kickoff": "2026-07-12T17:00:00", "venue": "Miami"},
+  {"id": "QF-4", "stage": "Viertelfinale", "home": "Sieger R16-7", "away": "Sieger R16-8", "kickoff": "2026-07-12T20:00:00", "venue": "Kansas City"},
+
+  {"id": "SF-1", "stage": "Halbfinale", "home": "Sieger QF-1", "away": "Sieger QF-2", "kickoff": "2026-07-14T20:00:00", "venue": "Dallas"},
+  {"id": "SF-2", "stage": "Halbfinale", "home": "Sieger QF-3", "away": "Sieger QF-4", "kickoff": "2026-07-15T20:00:00", "venue": "Atlanta"},
+
+  {"id": "TP-1", "stage": "Spiel um Platz 3", "home": "Verlierer SF-1", "away": "Verlierer SF-2", "kickoff": "2026-07-18T17:00:00", "venue": "Miami"},
+  {"id": "F-1", "stage": "Finale", "home": "Sieger SF-1", "away": "Sieger SF-2", "kickoff": "2026-07-19T20:00:00", "venue": "New York/New Jersey"}
 ]

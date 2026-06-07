@@ -1,6 +1,14 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.2.2";
+const WM_TIPPSPIEL_CARD_VERSION = "1.3.1";
 
 const ALL_GROUPS = ["A", "B", "C", "D", "E", "F", "G", "H"];
+const KNOCKOUT_ROUNDS = [
+  "Sechzehntelfinale",
+  "Achtelfinale",
+  "Viertelfinale",
+  "Halbfinale",
+  "Spiel um Platz 3",
+  "Finale",
+];
 const DEFAULT_ACCENT = "#fbbf24";
 const DEFAULT_ACCENT_2 = "#22c55e";
 const FLAG_CDN = "https://flagcdn.com/w40";
@@ -94,6 +102,26 @@ function normalizeGroups(groups) {
   return groups.map((g) => String(g).toUpperCase());
 }
 
+function partitionMatches(matches) {
+  const groups = new Map();
+  const rounds = new Map();
+  for (const g of ALL_GROUPS) groups.set(g, []);
+  for (const r of KNOCKOUT_ROUNDS) rounds.set(r, []);
+
+  for (const m of matches) {
+    if (m.group) {
+      const g = String(m.group).toUpperCase();
+      if (!groups.has(g)) groups.set(g, []);
+      groups.get(g).push(m);
+    } else {
+      const stage = m.stage || "K.o.-Runde";
+      if (!rounds.has(stage)) rounds.set(stage, []);
+      rounds.get(stage).push(m);
+    }
+  }
+  return { groups, rounds };
+}
+
 function defaultConfig(overrides = {}) {
   return {
     type: "custom:wm-tippspiel-card",
@@ -103,6 +131,7 @@ function defaultConfig(overrides = {}) {
     player_id: "",
     admin: false,
     show_groups: [...ALL_GROUPS],
+    show_knockout: true,
     show_rules: true,
     accent_color: DEFAULT_ACCENT,
     ...overrides,
@@ -220,6 +249,9 @@ class WmTippspielCardEditor extends HTMLElement {
                 </label>`
             ).join("")}
           </div>
+          <ha-formfield label="K.o.-Runden anzeigen (Sechzehntelfinale bis Finale)">
+            <ha-switch .checked=${cfg.show_knockout !== false} data-key="show_knockout"></ha-switch>
+          </ha-formfield>
           <ha-formfield label="Admin-Modus (Ergebnisse eintragen)">
             <ha-switch .checked=${Boolean(cfg.admin)} data-key="admin"></ha-switch>
           </ha-formfield>
@@ -334,6 +366,10 @@ class WmTippspielCardEditor extends HTMLElement {
     this.querySelector("ha-switch[data-key=show_rules]")?.addEventListener("change", (ev) => {
       this._set("show_rules", ev.target.checked);
     });
+
+    this.querySelector("ha-switch[data-key=show_knockout]")?.addEventListener("change", (ev) => {
+      this._set("show_knockout", ev.target.checked);
+    });
   }
 }
 
@@ -357,6 +393,7 @@ class WmTippspielCard extends HTMLElement {
     this._draftTips = this._draftTips || {};
     this._draftResults = this._draftResults || {};
     this._newPlayerName = this._newPlayerName || "";
+    this._openAccordions = this._openAccordions || new Set();
     if (!this.shadowRoot) {
       this.attachShadow({ mode: "open" });
       this._bindEvents();
@@ -434,6 +471,19 @@ class WmTippspielCard extends HTMLElement {
       const input = ev.target.closest(".add-player-input");
       if (input) this._addPlayerFromCard();
     });
+
+    this.shadowRoot.addEventListener(
+      "toggle",
+      (ev) => {
+        const det = ev.target.closest("details.accordion");
+        if (!det) return;
+        const id = det.getAttribute("data-acc-id");
+        if (!id) return;
+        if (det.open) this._openAccordions.add(id);
+        else this._openAccordions.delete(id);
+      },
+      true
+    );
   }
 
   _stateFingerprint(state) {
@@ -528,7 +578,73 @@ class WmTippspielCard extends HTMLElement {
 
   _filteredMatches(matches) {
     const set = new Set(normalizeGroups(this._config.show_groups));
-    return matches.filter((m) => set.has(String(m.group || "").toUpperCase()));
+    const showKnockout = this._config.show_knockout !== false;
+    return matches.filter((m) => {
+      if (m.group) return set.has(String(m.group).toUpperCase());
+      return showKnockout;
+    });
+  }
+
+  _defaultOpenAccordionId() {
+    const groups = normalizeGroups(this._config.show_groups);
+    const preferred = groups.includes("E") ? "E" : groups[0];
+    return preferred ? `group-${preferred}` : null;
+  }
+
+  _isAccordionOpen(id) {
+    if (this._openAccordions.has(id)) return true;
+    if (this._openAccordions.size === 0 && id === this._defaultOpenAccordionId()) return true;
+    return false;
+  }
+
+  _renderAccordion(id, title, count, bodyHtml) {
+    const open = this._isAccordionOpen(id);
+    return `<details class="accordion" data-acc-id="${escapeHtml(id)}"${open ? " open" : ""}>
+      <summary>
+        <span class="acc-title">${escapeHtml(title)}</span>
+        <span class="acc-count">${count} Spiele</span>
+      </summary>
+      <div class="accordion-body">${bodyHtml}</div>
+    </details>`;
+  }
+
+  _renderMatchAccordions(matches, renderMatchFn) {
+    const { groups, rounds } = partitionMatches(matches);
+    let html = "";
+
+    for (const g of ALL_GROUPS) {
+      const list = groups.get(g) || [];
+      if (!list.length) continue;
+      html += this._renderAccordion(
+        `group-${g}`,
+        `Gruppe ${g}`,
+        list.length,
+        list.map(renderMatchFn).join("")
+      );
+    }
+
+    for (const stage of KNOCKOUT_ROUNDS) {
+      const list = rounds.get(stage) || [];
+      if (!list.length) continue;
+      html += this._renderAccordion(
+        `round-${stage}`,
+        stage,
+        list.length,
+        list.map(renderMatchFn).join("")
+      );
+    }
+
+    for (const [stage, list] of rounds.entries()) {
+      if (KNOCKOUT_ROUNDS.includes(stage) || !list.length) continue;
+      html += this._renderAccordion(
+        `round-${stage}`,
+        stage,
+        list.length,
+        list.map(renderMatchFn).join("")
+      );
+    }
+
+    return html;
   }
 
   _accent() {
@@ -820,6 +936,47 @@ class WmTippspielCard extends HTMLElement {
         padding-left: 4px;
       }
       .group-label:first-child { margin-top: 0; }
+      .accordion {
+        margin-bottom: 8px;
+        border-radius: 12px;
+        border: 1px solid rgba(255,255,255,0.08);
+        background: rgba(255,255,255,0.02);
+        overflow: hidden;
+      }
+      .accordion > summary {
+        list-style: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px 14px;
+        font-weight: 700;
+        font-size: 0.88rem;
+        user-select: none;
+      }
+      .accordion > summary::-webkit-details-marker { display: none; }
+      .accordion > summary::after {
+        content: "▸";
+        opacity: 0.45;
+        font-size: 0.85rem;
+        transition: transform 0.15s ease;
+      }
+      .accordion[open] > summary::after {
+        transform: rotate(90deg);
+      }
+      .acc-title { flex: 1; }
+      .acc-count {
+        font-size: 0.72rem;
+        font-weight: 600;
+        opacity: 0.45;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .accordion-body {
+        padding: 0 10px 10px;
+        border-top: 1px solid rgba(255,255,255,0.06);
+      }
       .podium {
         display: grid;
         grid-template-columns: 1fr 1.15fr 1fr;
@@ -1174,19 +1331,12 @@ class WmTippspielCard extends HTMLElement {
     if (!matches.length) {
       return `<div class="empty"><div class="empty-icon">📅</div><h3>Keine Spiele</h3><p>Gruppenfilter in den Karten-Einstellungen prüfen.</p></div>`;
     }
-    let html = "";
-    let lastGroup = "";
-    for (const m of matches) {
-      if (m.group && m.group !== lastGroup) {
-        lastGroup = m.group;
-        html += `<div class="group-label">Gruppe ${m.group}</div>`;
-      }
+    return this._renderMatchAccordions(matches, (m) => {
       const res = results[m.id];
       const scoreHtml = `<span class="score-static">${res ? res.home : "–"}</span><span class="sep">:</span><span class="score-static">${res ? res.away : "–"}</span>`;
       const extra = res ? `<span class="badge badge-result">✓ Endstand ${res.home}:${res.away}</span>` : "";
-      html += this._renderMatchTeams(m, scoreHtml, extra);
-    }
-    return html;
+      return this._renderMatchTeams(m, scoreHtml, extra);
+    });
   }
 
   _tipPoints(tip, result) {
@@ -1212,13 +1362,7 @@ class WmTippspielCard extends HTMLElement {
       return `<div class="empty"><div class="empty-icon">⚽</div><h3>Keine Spiele</h3><p>Gruppenfilter in den Einstellungen anpassen.</p></div>`;
     }
 
-    let html = "";
-    let lastGroup = "";
-    for (const m of matches) {
-      if (m.group && m.group !== lastGroup) {
-        lastGroup = m.group;
-        html += `<div class="group-label">Gruppe ${m.group}</div>`;
-      }
+    return this._renderMatchAccordions(matches, (m) => {
       const locked = isPastKickoff(m.kickoff) && !this._config.admin;
       const tip = this._draftTips[m.id] || playerTips[m.id] || {};
       const res = results[m.id];
@@ -1254,9 +1398,8 @@ class WmTippspielCard extends HTMLElement {
         </div>`;
       }
 
-      html += this._renderMatchTeams(m, scoreHtml, extra);
-    }
-    return html;
+      return this._renderMatchTeams(m, scoreHtml, extra);
+    });
   }
 
   async _saveTip(btn) {
