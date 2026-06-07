@@ -13,5 +13,18 @@
     "abort": {
       "already_configured": "Dieses Tippspiel ist bereits eingerichtet."
     }
+  },
+  "entity": {
+    "update": {
+      "software_update": {
+        "name": "Software"
+      }
+    }
+  },
+  "issue": {
+    "restart_required": {
+      "title": "Neustart erforderlich",
+      "description": "WM Tippspiel wurde aktualisiert. Bitte starte Home Assistant neu, damit alle Änderungen wirksam werden."
+    }
   }
 }

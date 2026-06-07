@@ -1,4 +1,9 @@
-"""Konstanten für WM Tippspiel."""
+"""Versions- und Update-Konstanten."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
 
 DOMAIN = "wm_tippspiel"
 
@@ -7,6 +12,10 @@ CONF_PLAYERS = "players"
 
 STORAGE_VERSION = 1
 STORAGE_KEY = "wm_tippspiel"
+
+GITHUB_REPO = "sulmaring-tech/wm-tippspiel"
+GITHUB_RELEASES_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+GITHUB_USER_AGENT = "homeassistant-wm-tippspiel"
 
 ATTR_PLAYERS = "players"
 ATTR_MATCHES = "matches"
@@ -26,3 +35,11 @@ SERVICE_REMOVE_PLAYER = "remove_player"
 
 POINTS_EXACT = 3
 POINTS_TENDENCY = 1
+
+_MANIFEST = Path(__file__).parent / "manifest.json"
+
+
+def integration_version() -> str:
+    """Installierte Version aus manifest.json."""
+    data = json.loads(_MANIFEST.read_text(encoding="utf-8"))
+    return str(data.get("version", "0.0.0"))

@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.1.1";
+const WM_TIPPSPIEL_CARD_VERSION = "1.2.0";
 
 const ALL_GROUPS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 const DEFAULT_ACCENT = "#fbbf24";

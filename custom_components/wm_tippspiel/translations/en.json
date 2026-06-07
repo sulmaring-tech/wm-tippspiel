@@ -13,5 +13,18 @@
     "abort": {
       "already_configured": "This tipping game is already configured."
     }
+  },
+  "entity": {
+    "update": {
+      "software_update": {
+        "name": "Software"
+      }
+    }
+  },
+  "issue": {
+    "restart_required": {
+      "title": "Restart required",
+      "description": "WM Tippspiel was updated. Please restart Home Assistant to apply all changes."
+    }
   }
 }

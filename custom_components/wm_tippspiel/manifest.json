@@ -1,7 +1,7 @@
 {
   "domain": "wm_tippspiel",
   "name": "WM Tippspiel",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "documentation": "https://github.com/sulmaring-tech/wm-tippspiel",
   "issue_tracker": "https://github.com/sulmaring-tech/wm-tippspiel/issues",
   "codeowners": [],
