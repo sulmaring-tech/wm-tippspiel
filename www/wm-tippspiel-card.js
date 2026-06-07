@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.3.8";
+const WM_TIPPSPIEL_CARD_VERSION = "1.3.9";
 
 const ALL_GROUPS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 const KNOCKOUT_ROUNDS = [
@@ -190,6 +190,81 @@ class WmTippspielCardEditor extends HTMLElement {
     this._render();
   }
 
+  _editorSwitchValue(cfg, key) {
+    switch (key) {
+      case "admin":
+        return Boolean(cfg.admin);
+      case "show_knockout":
+        return cfg.show_knockout !== false;
+      case "show_rules":
+        return cfg.show_rules !== false;
+      case "auto_save_tips":
+        return cfg.auto_save_tips !== false;
+      default:
+        return Boolean(cfg[key]);
+    }
+  }
+
+  _bindEditorControls(cfg) {
+    const picker = this.querySelector('ha-entity-picker[data-key="entity"]');
+    if (picker) {
+      picker.hass = this._hass;
+      picker.value = cfg.entity || "";
+      if (!picker.includeDomains) picker.includeDomains = ["sensor"];
+      picker.addEventListener("value-changed", (ev) => {
+        this._set("entity", ev.detail.value);
+      });
+    }
+
+    this.querySelectorAll("ha-textfield[data-key]").forEach((el) => {
+      const key = el.getAttribute("data-key");
+      if (key === "new_player") {
+        el.value = this._newPlayerName || "";
+        el.addEventListener("input", (ev) => {
+          this._newPlayerName = ev.target.value;
+        });
+        return;
+      }
+      el.value = cfg[key] ?? (key === "accent_color" ? DEFAULT_ACCENT : "");
+      el.addEventListener("change", (ev) => {
+        this._set(key, ev.target.value);
+      });
+    });
+
+    this.querySelectorAll(".ed-chip[data-player]").forEach((chip) => {
+      chip.addEventListener("click", () => {
+        this._set("player_id", chip.getAttribute("data-player"));
+      });
+    });
+
+    this.querySelector("[data-action=add-player]")?.addEventListener("click", () => this._addPlayer());
+
+    this.querySelectorAll("[data-group]").forEach((cb) => {
+      cb.addEventListener("change", () => {
+        this._toggleGroup(cb.getAttribute("data-group"));
+      });
+    });
+
+    this.querySelectorAll("ha-switch[data-key]").forEach((el) => {
+      const key = el.getAttribute("data-key");
+      el.checked = this._editorSwitchValue(cfg, key);
+      el.addEventListener("change", () => {
+        this._set(key, el.checked);
+      });
+    });
+
+    const select = this.querySelector('ha-select[data-key="match_columns"]');
+    if (select) {
+      select.value = cfg.match_columns || "auto";
+      const onSelect = (ev) => {
+        const value = ev.detail?.value ?? select.value;
+        if (value) this._set("match_columns", value);
+      };
+      select.addEventListener("selected", onSelect);
+      select.addEventListener("value-changed", onSelect);
+    }
+  }
+
   _render() {
     const cfg = this._config;
     const players = this._players();
@@ -199,20 +274,16 @@ class WmTippspielCardEditor extends HTMLElement {
         <div class="ed-section">
           <div class="ed-title">Allgemein</div>
           <ha-entity-picker
-            .hass=${this._hass}
-            .value=${cfg.entity || ""}
-            .includeDomains=${["sensor"]}
             label="Ranglisten-Sensor"
             allow-custom-entity
+            data-key="entity"
           ></ha-entity-picker>
           <ha-textfield
             label="Titel"
-            .value=${cfg.title || ""}
             data-key="title"
           ></ha-textfield>
           <ha-textfield
             label="Untertitel (optional)"
-            .value=${cfg.subtitle || ""}
             data-key="subtitle"
           ></ha-textfield>
         </div>
@@ -233,7 +304,6 @@ class WmTippspielCardEditor extends HTMLElement {
           <div class="ed-add-row">
             <ha-textfield
               label="Neuer Spieler"
-              .value=${this._newPlayerName || ""}
               data-key="new_player"
             ></ha-textfield>
             <mwc-button raised label="Hinzufügen" data-action="add-player"></mwc-button>
@@ -252,22 +322,21 @@ class WmTippspielCardEditor extends HTMLElement {
             ).join("")}
           </div>
           <ha-formfield label="K.o.-Runden anzeigen (Sechzehntelfinale bis Finale)">
-            <ha-switch .checked=${cfg.show_knockout !== false} data-key="show_knockout"></ha-switch>
+            <ha-switch data-key="show_knockout"></ha-switch>
           </ha-formfield>
           <ha-formfield label="Tipps automatisch speichern">
-            <ha-switch .checked=${cfg.auto_save_tips !== false} data-key="auto_save_tips"></ha-switch>
+            <ha-switch data-key="auto_save_tips"></ha-switch>
           </ha-formfield>
           <p class="ed-hint">Bei Auto-Save wird gespeichert, sobald beide Tore eingegeben sind (ca. 1 Sek. Pause). Sonst erscheint der Button „Tipp speichern“.</p>
           <ha-formfield label="Admin-Modus (Ergebnisse eintragen)">
-            <ha-switch .checked=${Boolean(cfg.admin)} data-key="admin"></ha-switch>
+            <ha-switch data-key="admin"></ha-switch>
           </ha-formfield>
           <ha-formfield label="Punkteregeln unten anzeigen">
-            <ha-switch .checked=${cfg.show_rules !== false} data-key="show_rules"></ha-switch>
+            <ha-switch data-key="show_rules"></ha-switch>
           </ha-formfield>
           <p class="ed-hint">Dashboard-Breite: maximal 12 Spalten (= volle Viewbreite). Für maximale Breite eine <strong>Panel-Ansicht</strong> nutzen.</p>
           <ha-select
             label="Spiel-Layout (Spalten)"
-            .value=${cfg.match_columns || "auto"}
             data-key="match_columns"
           >
             <mwc-list-item value="auto">Automatisch (mehr Spalten wenn breit genug)</mwc-list-item>
@@ -281,7 +350,6 @@ class WmTippspielCardEditor extends HTMLElement {
           <div class="ed-title">Design</div>
           <ha-textfield
             label="Akzentfarbe (Hex)"
-            .value=${cfg.accent_color || DEFAULT_ACCENT}
             data-key="accent_color"
           ></ha-textfield>
         </div>
@@ -347,54 +415,7 @@ class WmTippspielCardEditor extends HTMLElement {
       </style>
     `;
 
-    this.querySelector("ha-entity-picker")?.addEventListener("value-changed", (ev) => {
-      this._set("entity", ev.detail.value);
-    });
-
-    this.querySelectorAll("ha-textfield[data-key]").forEach((el) => {
-      el.addEventListener("change", (ev) => {
-        const key = el.getAttribute("data-key");
-        if (key === "new_player") {
-          this._newPlayerName = ev.target.value;
-          return;
-        }
-        this._set(key, ev.target.value);
-      });
-    });
-
-    this.querySelectorAll(".ed-chip[data-player]").forEach((chip) => {
-      chip.addEventListener("click", () => {
-        this._set("player_id", chip.getAttribute("data-player"));
-      });
-    });
-
-    this.querySelector("[data-action=add-player]")?.addEventListener("click", () => this._addPlayer());
-
-    this.querySelectorAll("[data-group]").forEach((cb) => {
-      cb.addEventListener("change", () => {
-        this._toggleGroup(cb.getAttribute("data-group"));
-      });
-    });
-
-    this.querySelector("ha-switch[data-key=admin]")?.addEventListener("change", (ev) => {
-      this._set("admin", ev.target.checked);
-    });
-
-    this.querySelector("ha-switch[data-key=show_rules]")?.addEventListener("change", (ev) => {
-      this._set("show_rules", ev.target.checked);
-    });
-
-    this.querySelector("ha-switch[data-key=show_knockout]")?.addEventListener("change", (ev) => {
-      this._set("show_knockout", ev.target.checked);
-    });
-
-    this.querySelector("ha-switch[data-key=auto_save_tips]")?.addEventListener("change", (ev) => {
-      this._set("auto_save_tips", ev.target.checked);
-    });
-
-    this.querySelector("ha-select[data-key=match_columns]")?.addEventListener("selected", (ev) => {
-      this._set("match_columns", ev.detail.value);
-    });
+    this._bindEditorControls(cfg);
   }
 }
 
