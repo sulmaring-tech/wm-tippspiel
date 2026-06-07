@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
 from pathlib import Path
@@ -44,14 +45,16 @@ class WmTippspielStore:
             f"{STORAGE_KEY}.{entry_id}",
         )
         self._data: dict[str, Any] = _empty_store()
+        self._lock = asyncio.Lock()
 
     async def async_load(self) -> None:
-        loaded = await self._store.async_load()
-        self._data = loaded if loaded else _empty_store()
-        if not self._data.get("matches"):
-            self._data["matches"] = _default_matches()
-        elif self._sync_matches_from_bundle():
-            await self.async_save()
+        async with self._lock:
+            loaded = await self._store.async_load()
+            self._data = loaded if loaded else _empty_store()
+            if not self._data.get("matches"):
+                self._data["matches"] = _default_matches()
+            elif self._sync_matches_from_bundle():
+                await self._store.async_save(self._data)
 
     def _sync_matches_from_bundle(self) -> bool:
         """Spielplan aus der Integration mit gespeicherten Tipps abgleichen."""
@@ -83,7 +86,8 @@ class WmTippspielStore:
         return changed
 
     async def async_save(self) -> None:
-        await self._store.async_save(self._data)
+        async with self._lock:
+            await self._store.async_save(self._data)
 
     @property
     def data(self) -> dict[str, Any]:

@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.3.2";
+const WM_TIPPSPIEL_CARD_VERSION = "1.3.3";
 
 const ALL_GROUPS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 const KNOCKOUT_ROUNDS = [
@@ -488,7 +488,49 @@ class WmTippspielCard extends HTMLElement {
 
   _stateFingerprint(state) {
     if (!state) return "";
-    return `${state.last_updated}|${JSON.stringify(state.attributes)}`;
+    const a = state.attributes || {};
+    return JSON.stringify({
+      players: a.players,
+      standings: a.standings,
+      matches: a.matches,
+      tips: a.tips,
+      results: a.results,
+    });
+  }
+
+  _captureDraftInputsFromDom() {
+    if (!this.shadowRoot) return;
+    this.shadowRoot.querySelectorAll('.score-input[data-kind="tip"]').forEach((inp) => {
+      const matchId = inp.getAttribute("data-match");
+      const side = inp.getAttribute("data-side");
+      if (!matchId || !side) return;
+      this._draftTips[matchId] = this._draftTips[matchId] || {};
+      this._draftTips[matchId][side] = inp.value;
+    });
+    this.shadowRoot.querySelectorAll('.score-input[data-kind="result"]').forEach((inp) => {
+      const matchId = inp.getAttribute("data-match");
+      const side = inp.getAttribute("data-side");
+      if (!matchId || !side) return;
+      this._draftResults[matchId] = this._draftResults[matchId] || {};
+      this._draftResults[matchId][side] = inp.value;
+    });
+  }
+
+  _applySavedTip(matchId, home, away) {
+    if (!this._state?.attributes || !this._selectedPlayer) return;
+    const attrs = this._state.attributes;
+    const tips = { ...(attrs.tips || {}) };
+    tips[this._selectedPlayer] = { ...(tips[this._selectedPlayer] || {}), [matchId]: { home, away } };
+    this._state = { ...this._state, attributes: { ...attrs, tips } };
+    this._stateFingerprintCache = this._stateFingerprint(this._state);
+  }
+
+  _applySavedResult(matchId, home, away) {
+    if (!this._state?.attributes) return;
+    const attrs = this._state.attributes;
+    const results = { ...(attrs.results || {}), [matchId]: { home, away } };
+    this._state = { ...this._state, attributes: { ...attrs, results } };
+    this._stateFingerprintCache = this._stateFingerprint(this._state);
   }
 
   _tipInputsValid(matchId) {
@@ -556,6 +598,9 @@ class WmTippspielCard extends HTMLElement {
     const players = this._state?.attributes?.players || [];
     if (!players.length) {
       this._selectedPlayer = null;
+      return;
+    }
+    if (this._selectedPlayer && players.some((p) => p.id === this._selectedPlayer)) {
       return;
     }
     if (this._config.player_id && players.some((p) => p.id === this._config.player_id)) {
@@ -1141,6 +1186,7 @@ class WmTippspielCard extends HTMLElement {
 
   _renderShell() {
     if (!this.shadowRoot) return;
+    this._captureDraftInputsFromDom();
     const cfg = this._config;
     const missing = !this._hass?.states?.[cfg.entity];
 
@@ -1430,8 +1476,9 @@ class WmTippspielCard extends HTMLElement {
         home: Number(home),
         away: Number(away),
       });
+      this._applySavedTip(matchId, Number(home), Number(away));
       delete this._draftTips[matchId];
-      this._stateFingerprintCache = "";
+      this._renderShell();
       this._showToast("Tipp gespeichert ✓", "success");
     } catch (err) {
       console.error("[wm-tippspiel-card] set_tip failed:", err);
@@ -1465,8 +1512,9 @@ class WmTippspielCard extends HTMLElement {
         home: Number(home),
         away: Number(away),
       });
+      this._applySavedResult(matchId, Number(home), Number(away));
       delete this._draftResults[matchId];
-      this._stateFingerprintCache = "";
+      this._renderShell();
       this._showToast("Ergebnis gespeichert ✓", "success");
     } catch (err) {
       console.error("[wm-tippspiel-card] set_result failed:", err);
