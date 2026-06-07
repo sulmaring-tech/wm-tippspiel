@@ -12,6 +12,25 @@ Tippspiel für die **Fußball-WM 2026** als Home-Assistant-Integration mit Lovel
 - **Gruppenspiele A–H** der WM 2026 vorinstalliert (48 Spiele der Gruppen A–H)
 - **Updates** über den Home-Assistant-Update-Manager (ab v1.2.0)
 
+## Automatische Ergebnisse (ab v1.3.0)
+
+Ergebnisse können **automatisch** von [API-Football](https://www.api-football.com/) abgerufen werden:
+
+1. Kostenlosen API-Schlüssel erstellen (Free Tier: 100 Anfragen/Tag)
+2. **Einstellungen → Geräte & Dienste → WM Tippspiel → Konfigurieren**
+3. API-Schlüssel eintragen, „Ergebnisse automatisch abrufen“ aktivieren
+4. Intervall z. B. **900** Sekunden (15 Min.)
+
+Nach jedem beendeten Spiel werden Ergebnisse eingetragen und Punkte neu berechnet. Manuelle Ergebnisse (Admin) funktionieren weiterhin.
+
+**Manuell synchronisieren:**
+
+```yaml
+service: wm_tippspiel.sync_results
+```
+
+Status unter Sensor-Attribut `api_sync` (Rangliste-Sensor).
+
 ## Updates
 
 Ab Version **1.2.0** erscheint ein Update-Eintrag unter:

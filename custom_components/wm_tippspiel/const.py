@@ -1,4 +1,4 @@
-"""Versions- und Update-Konstanten."""
+"""Konstanten für WM Tippspiel."""
 
 from __future__ import annotations
 
@@ -9,6 +9,15 @@ DOMAIN = "wm_tippspiel"
 
 CONF_TITLE = "title"
 CONF_PLAYERS = "players"
+CONF_API_KEY = "api_key"
+CONF_AUTO_RESULTS = "auto_results"
+CONF_SCAN_INTERVAL = "scan_interval"
+
+DEFAULT_SCAN_INTERVAL = 900
+MIN_SCAN_INTERVAL = 300
+API_FOOTBALL_BASE_URL = "https://v3.football.api-sports.io"
+API_FOOTBALL_LEAGUE = 1
+API_FOOTBALL_SEASON = 2026
 
 STORAGE_VERSION = 1
 STORAGE_KEY = "wm_tippspiel"
@@ -32,6 +41,7 @@ SERVICE_SET_TIP = "set_tip"
 SERVICE_SET_RESULT = "set_result"
 SERVICE_ADD_PLAYER = "add_player"
 SERVICE_REMOVE_PLAYER = "remove_player"
+SERVICE_SYNC_RESULTS = "sync_results"
 
 POINTS_EXACT = 3
 POINTS_TENDENCY = 1

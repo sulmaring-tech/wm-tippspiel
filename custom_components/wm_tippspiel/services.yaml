@@ -44,3 +44,10 @@ remove_player:
       name: Konfigurations-ID
     player_id:
       name: Spieler-ID
+
+sync_results:
+  name: Ergebnisse synchronisieren
+  description: Ruft sofort Ergebnisse von API-Football ab (falls konfiguriert).
+  fields:
+    entry_id:
+      name: Konfigurations-ID

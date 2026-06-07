@@ -4,5 +4,6 @@
   "homeassistant": "2024.4.0",
   "domains": ["wm_tippspiel"],
   "country": ["DE"],
+  "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/sulmaring-tech/wm-tippspiel/issues"
 }

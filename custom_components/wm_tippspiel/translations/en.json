@@ -14,6 +14,19 @@
       "already_configured": "This tipping game is already configured."
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Automatic results",
+        "description": "API-Football (api-sports.io) fetches finished World Cup matches and records results.",
+        "data": {
+          "api_key": "API-Football key",
+          "auto_results": "Fetch results automatically",
+          "scan_interval": "Poll interval (seconds, min. 300)"
+        }
+      }
+    }
+  },
   "entity": {
     "update": {
       "software_update": {

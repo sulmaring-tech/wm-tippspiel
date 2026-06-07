@@ -18,6 +18,8 @@ from .const import (
     ATTR_TIPS,
     DOMAIN,
 )
+from .coordinator import WmTippspielCoordinator
+from .runtime import get_runtime
 from .storage import WmTippspielStore
 
 
@@ -26,14 +28,14 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    store: WmTippspielStore = hass.data[DOMAIN][entry.entry_id]
+    runtime = get_runtime(hass, entry.entry_id)
     registry_key = f"{DOMAIN}_{entry.entry_id}_add_entities"
     hass.data.setdefault(DOMAIN, {})[registry_key] = async_add_entities
 
     entities: list[SensorEntity] = [
-        WmTippspielLeaderboardSensor(entry, store),
+        WmTippspielLeaderboardSensor(entry, runtime.store, runtime.coordinator),
     ]
-    entities.extend(_player_entities(entry, store))
+    entities.extend(_player_entities(entry, runtime.store))
     async_add_entities(entities)
 
 
@@ -86,9 +88,24 @@ class WmTippspielLeaderboardSensor(WmTippspielBaseSensor):
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_unique_id = None
 
+    def __init__(
+        self,
+        entry: ConfigEntry,
+        store: WmTippspielStore,
+        coordinator: WmTippspielCoordinator,
+    ) -> None:
+        super().__init__(entry, store)
+        self._coordinator = coordinator
+
     @property
     def unique_id(self) -> str:
         return f"{self._entry.entry_id}_leaderboard"
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            self._coordinator.async_add_listener(self.async_write_ha_state)
+        )
 
     @property
     def native_value(self) -> str:
@@ -100,13 +117,22 @@ class WmTippspielLeaderboardSensor(WmTippspielBaseSensor):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        return {
+        attrs: dict[str, Any] = {
             ATTR_STANDINGS: self._store.compute_standings(),
             ATTR_PLAYERS: self._store.get_players(),
             ATTR_MATCHES: self._store.get_matches(),
             ATTR_TIPS: self._store.data.get("tips", {}),
             ATTR_RESULTS: self._store.data.get("results", {}),
         }
+        if self._coordinator.data:
+            attrs["api_sync"] = {
+                "enabled": self._coordinator.data.get("api_enabled"),
+                "last_sync": self._coordinator.data.get("last_sync"),
+                "updated_matches": self._coordinator.data.get("updated_matches"),
+                "finished_count": self._coordinator.data.get("finished_count"),
+                "error": self._coordinator.data.get("error"),
+            }
+        return attrs
 
 
 class WmTippspielPlayerSensor(WmTippspielBaseSensor):

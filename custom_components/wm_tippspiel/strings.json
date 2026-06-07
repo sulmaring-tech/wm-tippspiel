@@ -14,6 +14,19 @@
       "already_configured": "Dieses Tippspiel ist bereits eingerichtet."
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Automatische Ergebnisse",
+        "description": "API-Football (api-sports.io) abfragt beendete WM-Spiele und trägt Ergebnisse ein.",
+        "data": {
+          "api_key": "API-Football Schlüssel",
+          "auto_results": "Ergebnisse automatisch abrufen",
+          "scan_interval": "Abfrage-Intervall (Sekunden, min. 300)"
+        }
+      }
+    }
+  },
   "entity": {
     "update": {
       "software_update": {

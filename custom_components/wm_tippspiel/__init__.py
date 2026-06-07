@@ -26,7 +26,10 @@ from .const import (
     SERVICE_REMOVE_PLAYER,
     SERVICE_SET_RESULT,
     SERVICE_SET_TIP,
+    SERVICE_SYNC_RESULTS,
 )
+from .coordinator import WmTippspielCoordinator
+from .runtime import WmTippspielRuntime, get_runtime, get_store
 from .storage import WmTippspielStore
 
 _LOGGER = logging.getLogger(__name__)
@@ -67,7 +70,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             store.add_player(name)
     await store.async_save()
 
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = store
+    coordinator = WmTippspielCoordinator(hass, entry, store)
+    await coordinator.async_config_entry_first_refresh()
+
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = WmTippspielRuntime(
+        store=store,
+        coordinator=coordinator,
+    )
 
     await _register_www(hass)
     _register_services(hass)
@@ -82,22 +91,13 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    runtime: WmTippspielRuntime | None = hass.data.get(DOMAIN, {}).pop(
+        entry.entry_id, None
+    )
+    if runtime and runtime.coordinator:
+        await runtime.coordinator.async_shutdown()
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    if unload_ok:
-        hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
     return unload_ok
-
-
-def _get_store(hass: HomeAssistant, entry_id: str | None) -> WmTippspielStore:
-    if not entry_id:
-        entries = hass.config_entries.async_entries(DOMAIN)
-        if not entries:
-            raise ValueError("Keine WM-Tippspiel-Integration konfiguriert")
-        entry_id = entries[0].entry_id
-    store = hass.data.get(DOMAIN, {}).get(entry_id)
-    if store is None:
-        raise ValueError(f"Unbekannte Konfiguration: {entry_id}")
-    return store
 
 
 def _register_services(hass: HomeAssistant) -> None:
@@ -105,7 +105,7 @@ def _register_services(hass: HomeAssistant) -> None:
         return
 
     async def _set_tip(call: ServiceCall) -> None:
-        store = _get_store(hass, call.data.get("entry_id"))
+        store = get_store(hass, call.data.get("entry_id"))
         store.set_tip(
             call.data[ATTR_PLAYER_ID],
             call.data[ATTR_MATCH_ID],
@@ -116,7 +116,7 @@ def _register_services(hass: HomeAssistant) -> None:
         _async_notify(hass)
 
     async def _set_result(call: ServiceCall) -> None:
-        store = _get_store(hass, call.data.get("entry_id"))
+        store = get_store(hass, call.data.get("entry_id"))
         store.set_result(
             call.data[ATTR_MATCH_ID],
             call.data[ATTR_HOME],
@@ -130,19 +130,30 @@ def _register_services(hass: HomeAssistant) -> None:
         if not entry_id:
             entries = hass.config_entries.async_entries(DOMAIN)
             entry_id = entries[0].entry_id if entries else None
-        store = _get_store(hass, entry_id)
-        player = store.add_player(call.data[ATTR_NAME])
-        await store.async_save()
+        runtime = get_runtime(hass, entry_id)
+        player = runtime.store.add_player(call.data[ATTR_NAME])
+        await runtime.store.async_save()
         from .sensor import async_add_player_entities
 
-        await async_add_player_entities(hass, entry_id, store, player)
+        await async_add_player_entities(hass, entry_id, runtime.store, player)
         _async_notify(hass)
 
     async def _remove_player(call: ServiceCall) -> None:
-        store = _get_store(hass, call.data.get("entry_id"))
+        store = get_store(hass, call.data.get("entry_id"))
         if not store.remove_player(call.data[ATTR_PLAYER_ID]):
             raise ValueError(f"Spieler nicht gefunden: {call.data[ATTR_PLAYER_ID]}")
         await store.async_save()
+        _async_notify(hass)
+
+    async def _sync_results(call: ServiceCall) -> None:
+        entry_id = call.data.get("entry_id")
+        if not entry_id:
+            entries = hass.config_entries.async_entries(DOMAIN)
+            if not entries:
+                raise ValueError("Keine WM-Tippspiel-Integration konfiguriert")
+            entry_id = entries[0].entry_id
+        runtime = get_runtime(hass, entry_id)
+        await runtime.coordinator.async_request_refresh()
         _async_notify(hass)
 
     hass.services.async_register(
@@ -193,6 +204,12 @@ def _register_services(hass: HomeAssistant) -> None:
                 vol.Required(ATTR_PLAYER_ID): cv.string,
             }
         ),
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SYNC_RESULTS,
+        _sync_results,
+        schema=vol.Schema({vol.Optional("entry_id"): cv.string}),
     )
 
 
