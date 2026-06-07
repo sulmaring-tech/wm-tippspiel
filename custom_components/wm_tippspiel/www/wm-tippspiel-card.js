@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.3.5";
+const WM_TIPPSPIEL_CARD_VERSION = "1.3.6";
 
 const ALL_GROUPS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 const KNOCKOUT_ROUNDS = [
@@ -476,10 +476,16 @@ class WmTippspielCard extends HTMLElement {
       const matchId = input.getAttribute("data-match");
       const side = input.getAttribute("data-side");
       const kind = input.getAttribute("data-kind") || "tip";
-      const bucket = kind === "result" ? this._draftResults : this._draftTips;
+      if (kind === "result") {
+        this._draftResults[matchId] = this._draftResults[matchId] || {};
+        this._draftResults[matchId][side] = input.value;
+        return;
+      }
+      if (!this._selectedPlayer) return;
+      const bucket = this._draftTipsForPlayer(this._selectedPlayer);
       bucket[matchId] = bucket[matchId] || {};
       bucket[matchId][side] = input.value;
-      if (kind === "tip") this._syncTipSaveButton(matchId);
+      this._syncTipSaveButton(matchId);
     });
 
     this.shadowRoot.addEventListener("keydown", (ev) => {
@@ -502,6 +508,16 @@ class WmTippspielCard extends HTMLElement {
     );
   }
 
+  _draftTipsForPlayer(playerId) {
+    if (!playerId) return {};
+    if (!this._draftTips[playerId]) this._draftTips[playerId] = {};
+    return this._draftTips[playerId];
+  }
+
+  _getDraftTip(playerId, matchId) {
+    return this._draftTipsForPlayer(playerId)[matchId] || {};
+  }
+
   _stateFingerprint(state) {
     if (!state) return "";
     const a = state.attributes || {};
@@ -516,13 +532,16 @@ class WmTippspielCard extends HTMLElement {
 
   _captureDraftInputsFromDom() {
     if (!this.shadowRoot) return;
-    this.shadowRoot.querySelectorAll('.score-input[data-kind="tip"]').forEach((inp) => {
-      const matchId = inp.getAttribute("data-match");
-      const side = inp.getAttribute("data-side");
-      if (!matchId || !side) return;
-      this._draftTips[matchId] = this._draftTips[matchId] || {};
-      this._draftTips[matchId][side] = inp.value;
-    });
+    if (this._selectedPlayer) {
+      const playerDrafts = this._draftTipsForPlayer(this._selectedPlayer);
+      this.shadowRoot.querySelectorAll('.score-input[data-kind="tip"]').forEach((inp) => {
+        const matchId = inp.getAttribute("data-match");
+        const side = inp.getAttribute("data-side");
+        if (!matchId || !side) return;
+        playerDrafts[matchId] = playerDrafts[matchId] || {};
+        playerDrafts[matchId][side] = inp.value;
+      });
+    }
     this.shadowRoot.querySelectorAll('.score-input[data-kind="result"]').forEach((inp) => {
       const matchId = inp.getAttribute("data-match");
       const side = inp.getAttribute("data-side");
@@ -559,7 +578,7 @@ class WmTippspielCard extends HTMLElement {
     if (homeIn && awayIn) {
       return homeIn.value !== "" && awayIn.value !== "" && !Number.isNaN(Number(homeIn.value)) && !Number.isNaN(Number(awayIn.value));
     }
-    const draft = this._draftTips[matchId] || {};
+    const draft = this._getDraftTip(this._selectedPlayer, matchId);
     return draft.home !== "" && draft.home != null && draft.away !== "" && draft.away != null;
   }
 
@@ -1467,7 +1486,9 @@ class WmTippspielCard extends HTMLElement {
 
     return this._renderMatchAccordions(matches, (m) => {
       const locked = isPastKickoff(m.kickoff) && !this._config.admin;
-      const tip = this._draftTips[m.id] || playerTips[m.id] || {};
+      const savedTip = playerTips[m.id] || {};
+      const draftTip = this._getDraftTip(playerId, m.id);
+      const tip = { ...savedTip, ...draftTip };
       const res = results[m.id];
       const homeVal = tip.home ?? "";
       const awayVal = tip.away ?? "";
@@ -1534,7 +1555,8 @@ class WmTippspielCard extends HTMLElement {
         away: Number(away),
       });
       this._applySavedTip(matchId, Number(home), Number(away));
-      delete this._draftTips[matchId];
+      const playerDrafts = this._draftTipsForPlayer(this._selectedPlayer);
+      delete playerDrafts[matchId];
       this._renderShell();
       this._showToast("Tipp gespeichert ✓", "success");
     } catch (err) {
