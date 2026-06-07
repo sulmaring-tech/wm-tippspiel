@@ -124,6 +124,7 @@ class WmTippspielLeaderboardSensor(WmTippspielBaseSensor):
             ATTR_MATCHES: self._store.get_matches(),
             ATTR_TIPS: self._store.data.get("tips", {}),
             ATTR_RESULTS: self._store.data.get("results", {}),
+            "group_tables": self._store.get_group_tables(),
         }
         if self._coordinator.data:
             attrs["api_sync"] = {

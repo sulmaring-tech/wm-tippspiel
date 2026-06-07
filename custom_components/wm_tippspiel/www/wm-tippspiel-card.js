@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.4.0";
+const WM_TIPPSPIEL_CARD_VERSION = "1.5.0";
 
 const ALL_GROUPS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 const KNOCKOUT_ROUNDS = [
@@ -106,6 +106,11 @@ function splitRoundMatches(list) {
   if (!list.length) return { left: [], right: [] };
   const mid = Math.ceil(list.length / 2);
   return { left: list.slice(0, mid), right: list.slice(mid) };
+}
+
+function isBracketPlaceholder(name) {
+  if (!name) return true;
+  return /^(?:\d+\. Gruppe|3\. Gruppe|Sieger|Verlierer)\s/.test(String(name));
 }
 
 function partitionMatches(matches) {
@@ -1949,10 +1954,12 @@ class WmTippspielCard extends HTMLElement {
         <span>${escapeHtml(m.stage || "")}</span>
       </div>
       <div class="bracket-team-line">
+        ${isBracketPlaceholder(m.home) ? "" : `<span class="team-flag">${teamFlag(m.home)}</span>`}
         <span class="bracket-label" title="${escapeHtml(m.home)}">${escapeHtml(m.home)}</span>
         ${homeScore}
       </div>
       <div class="bracket-team-line">
+        ${isBracketPlaceholder(m.away) ? "" : `<span class="team-flag">${teamFlag(m.away)}</span>`}
         <span class="bracket-label" title="${escapeHtml(m.away)}">${escapeHtml(m.away)}</span>
         ${awayScore}
       </div>

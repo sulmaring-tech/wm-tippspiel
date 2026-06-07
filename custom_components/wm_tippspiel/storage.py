@@ -11,6 +11,12 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
+from .bracket import (
+    merge_schedule_from_bundle,
+    refresh_knockout_teams,
+    templates_from_matches,
+    compute_group_tables,
+)
 from .const import STORAGE_KEY, STORAGE_VERSION
 from .scoring import score_tip
 
@@ -46,6 +52,9 @@ class WmTippspielStore:
         )
         self._data: dict[str, Any] = _empty_store()
         self._lock = asyncio.Lock()
+        self._knockout_templates: dict[str, dict[str, str]] = templates_from_matches(
+            _default_matches()
+        )
 
     def _purge_orphan_tips(self) -> bool:
         """Entfernt Tipps ohne zugehörigen Spieler (z. B. nach fehlgeschlagenem Löschen)."""
@@ -71,6 +80,8 @@ class WmTippspielStore:
             changed = self._purge_orphan_tips()
             if self._sync_matches_from_bundle():
                 changed = True
+            if self._refresh_knockout_teams():
+                changed = True
             if changed:
                 await self._store.async_save(self._data)
 
@@ -79,6 +90,7 @@ class WmTippspielStore:
         bundled = _default_matches()
         if not bundled:
             return False
+        self._knockout_templates = templates_from_matches(bundled)
         stored_by_id = {
             m["id"]: m for m in self._data.get("matches", []) if m.get("id")
         }
@@ -90,18 +102,33 @@ class WmTippspielStore:
                 continue
             stored_match = stored_by_id.get(match_id)
             if stored_match:
-                updated = {**stored_match, **bundled_match}
+                updated = merge_schedule_from_bundle(stored_match, bundled_match)
                 if updated != stored_match:
                     changed = True
                 synced.append(updated)
             else:
-                synced.append(bundled_match)
+                synced.append(dict(bundled_match))
                 changed = True
         if len(synced) != len(self._data.get("matches", [])):
             changed = True
         if changed:
             self._data["matches"] = synced
         return changed
+
+    def _refresh_knockout_teams(self) -> bool:
+        results = self._data.get("results", {})
+        if not isinstance(results, dict):
+            results = {}
+        matches = self._data.get("matches", [])
+        if not isinstance(matches, list):
+            return False
+        return refresh_knockout_teams(matches, results, self._knockout_templates)
+
+    def get_group_tables(self) -> dict[str, list[dict[str, Any]]]:
+        results = self._data.get("results", {})
+        if not isinstance(results, dict):
+            results = {}
+        return compute_group_tables(self.get_matches(), results)
 
     async def async_save(self) -> None:
         async with self._lock:
@@ -153,6 +180,7 @@ class WmTippspielStore:
             raise ValueError(f"Unbekanntes Spiel: {match_id}")
         results = self._data.setdefault("results", {})
         results[match_id] = {"home": int(home), "away": int(away)}
+        self._refresh_knockout_teams()
 
     def clear_result(self, match_id: str) -> bool:
         results = self._data.get("results", {})
@@ -160,12 +188,14 @@ class WmTippspielStore:
             return False
         del results[match_id]
         self._data["results"] = results
+        self._refresh_knockout_teams()
         return True
 
     def clear_all_results(self) -> int:
         results = self._data.get("results", {})
         count = len(results)
         self._data["results"] = {}
+        self._refresh_knockout_teams()
         return count
 
     def get_results(self) -> dict[str, dict[str, int]]:
