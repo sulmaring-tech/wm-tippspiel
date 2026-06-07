@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.3.9";
+const WM_TIPPSPIEL_CARD_VERSION = "1.3.10";
 
 const ALL_GROUPS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 const KNOCKOUT_ROUNDS = [
@@ -493,7 +493,10 @@ class WmTippspielCard extends HTMLElement {
       }
       const removePlayer = ev.target.closest("[data-action=remove-player]");
       if (removePlayer) {
-        this._removePlayer(removePlayer.getAttribute("data-player"));
+        ev.preventDefault();
+        ev.stopPropagation();
+        void this._removePlayer(removePlayer.getAttribute("data-player"));
+        return;
       }
     });
 
@@ -1400,7 +1403,7 @@ class WmTippspielCard extends HTMLElement {
                 <h1>${escapeHtml(cfg.title || "WM Tippspiel")}</h1>
                 ${cfg.subtitle ? `<p>${escapeHtml(cfg.subtitle)}</p>` : `<p>Fußball-WM 2026 · Tipprunde</p>`}
               </div>
-              ${cfg.admin ? `<span class="badge-admin">Admin</span>` : ""}
+              ${this._isAdmin() ? `<span class="badge-admin">Admin</span>` : ""}
             </div>
             ${
               !missing && (this._data().players || []).length
@@ -1449,7 +1452,7 @@ class WmTippspielCard extends HTMLElement {
                   </div>
                   <div class="player-row-actions">
                     <button type="button" class="btn-icon" data-action="select-player-row" data-player="${escapeHtml(p.id)}">Tippen</button>
-                    ${this._config.admin ? `<button type="button" class="btn-icon danger" data-action="remove-player" data-player="${escapeHtml(p.id)}">Entfernen</button>` : ""}
+                    ${this._isAdmin() ? `<button type="button" class="btn-icon danger" data-action="remove-player" data-player="${escapeHtml(p.id)}">Entfernen</button>` : ""}
                   </div>
                 </div>`
             )
@@ -1479,10 +1482,43 @@ class WmTippspielCard extends HTMLElement {
     this._tab = "tips";
   }
 
+  _isAdmin() {
+    return this._config.admin === true || this._config.admin === "true";
+  }
+
   async _removePlayer(playerId) {
-    if (!playerId || !this._hass || !this._config.admin) return;
-    await this._callService("remove_player", { player_id: playerId });
-    if (this._selectedPlayer === playerId) this._selectedPlayer = null;
+    if (!playerId || !this._hass) return;
+    if (!this._isAdmin()) {
+      this._showToast("Spieler entfernen ist nur im Admin-Modus möglich.", "error");
+      return;
+    }
+
+    const players = this._data().players || [];
+    const player = players.find((p) => p.id === playerId);
+    const name = player?.name || "Spieler";
+    if (!window.confirm(`${name} wirklich entfernen? Alle Tipps dieses Spielers werden gelöscht.`)) {
+      return;
+    }
+
+    try {
+      await this._callService("remove_player", { player_id: playerId });
+      if (this._selectedPlayer === playerId) this._selectedPlayer = null;
+      if (this._state?.attributes) {
+        const attrs = { ...this._state.attributes };
+        attrs.players = (attrs.players || []).filter((p) => p.id !== playerId);
+        const tips = { ...(attrs.tips || {}) };
+        delete tips[playerId];
+        attrs.tips = tips;
+        attrs.standings = (attrs.standings || []).filter((s) => s.id !== playerId);
+        this._state = { ...this._state, attributes: attrs };
+        this._stateFingerprintCache = this._stateFingerprint(this._state);
+      }
+      this._renderShell();
+      this._showToast(`${name} entfernt`, "success");
+    } catch (err) {
+      console.error("[wm-tippspiel-card] remove_player failed:", err);
+      this._showToast(`Entfernen fehlgeschlagen: ${err?.message || err}`, "error");
+    }
   }
 
   _renderStandings(standings) {
@@ -1587,7 +1623,7 @@ class WmTippspielCard extends HTMLElement {
     }
 
     return this._renderMatchAccordions(matches, (m) => {
-      const locked = isPastKickoff(m.kickoff) && !this._config.admin;
+      const locked = isPastKickoff(m.kickoff) && !this._isAdmin();
       const savedTip = playerTips[m.id] || {};
       const draftTip = this._getDraftTip(playerId, m.id);
       const tip = { ...savedTip, ...draftTip };
@@ -1629,7 +1665,7 @@ class WmTippspielCard extends HTMLElement {
         extra += `<span class="badge badge-locked">🔒 Tippabgabe geschlossen</span>`;
       }
 
-      if (this._config.admin) {
+      if (this._isAdmin()) {
         extra += `<div class="admin-row">
           <span class="admin-label">Ergebnis eintragen</span>
           <input class="score-input" type="number" min="0" max="20" data-match="${m.id}" data-side="home" data-kind="result" value="${(this._draftResults[m.id] || res || {}).home ?? ""}" placeholder="0" />

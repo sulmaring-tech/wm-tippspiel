@@ -139,10 +139,24 @@ def _register_services(hass: HomeAssistant) -> None:
         _async_notify(hass)
 
     async def _remove_player(call: ServiceCall) -> None:
-        store = get_store(hass, call.data.get("entry_id"))
-        if not store.remove_player(call.data[ATTR_PLAYER_ID]):
-            raise ValueError(f"Spieler nicht gefunden: {call.data[ATTR_PLAYER_ID]}")
+        entry_id = call.data.get("entry_id")
+        if not entry_id:
+            entries = hass.config_entries.async_entries(DOMAIN)
+            entry_id = entries[0].entry_id if entries else None
+        store = get_store(hass, entry_id)
+        player_id = call.data[ATTR_PLAYER_ID]
+        if not store.remove_player(player_id):
+            raise ValueError(f"Spieler nicht gefunden: {player_id}")
         await store.async_save()
+
+        if entry_id:
+            from homeassistant.helpers import entity_registry as er
+
+            registry = er.async_get(hass)
+            unique_id = f"{entry_id}_player_{player_id}"
+            if entity_id := registry.async_get_entity_id("sensor", DOMAIN, unique_id):
+                registry.async_remove(entity_id)
+
         _async_notify(hass)
 
     async def _sync_results(call: ServiceCall) -> None:
