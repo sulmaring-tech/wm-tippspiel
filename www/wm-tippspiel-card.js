@@ -1,8 +1,9 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.2.0";
+const WM_TIPPSPIEL_CARD_VERSION = "1.2.1";
 
 const ALL_GROUPS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 const DEFAULT_ACCENT = "#fbbf24";
 const DEFAULT_ACCENT_2 = "#22c55e";
+const FLAG_CDN = "https://flagcdn.com/w40";
 
 const TABS = [
   { id: "tips", label: "Tippen", icon: "mdi:soccer" },
@@ -11,35 +12,40 @@ const TABS = [
   { id: "players", label: "Spieler", icon: "mdi:account-group" },
 ];
 
-const TEAM_FLAGS = {
-  Mexiko: "🇲🇽",
-  "Südafrika": "🇿🇦",
-  "Südkorea": "🇰🇷",
-  Kanada: "🇨🇦",
-  Katar: "🇶🇦",
-  Schweiz: "🇨🇭",
-  Brasilien: "🇧🇷",
-  Marokko: "🇲🇦",
-  Haiti: "🇭🇹",
-  Schottland: "🏴󠁧󠁢󠁳󠁣󠁴󠁿",
-  USA: "🇺🇸",
-  Paraguay: "🇵🇾",
-  Australien: "🇦🇺",
-  Deutschland: "🇩🇪",
-  Curaçao: "🇨🇼",
-  "Elfenbeinküste": "🇨🇮",
-  Ecuador: "🇪🇨",
-  Niederlande: "🇳🇱",
-  Japan: "🇯🇵",
-  Tunesien: "🇹🇳",
-  Belgien: "🇧🇪",
-  Ägypten: "🇪🇬",
-  Iran: "🇮🇷",
-  Neuseeland: "🇳🇿",
-  Spanien: "🇪🇸",
-  "Kap Verde": "🇨🇻",
-  "Saudi-Arabien": "🇸🇦",
-  Uruguay: "🇺🇾",
+/** ISO-3166 Codes für flagcdn.com (Emoji-Flaggen zeigen unter Windows oft MX/ZA statt 🇲🇽). */
+const TEAM_ISO = {
+  Mexiko: "mx",
+  "Südafrika": "za",
+  "Südkorea": "kr",
+  Kanada: "ca",
+  Katar: "qa",
+  Schweiz: "ch",
+  Brasilien: "br",
+  Marokko: "ma",
+  Haiti: "ht",
+  Schottland: "gb-sct",
+  USA: "us",
+  Paraguay: "py",
+  Australien: "au",
+  Deutschland: "de",
+  Curaçao: "cw",
+  "Elfenbeinküste": "ci",
+  Ecuador: "ec",
+  Niederlande: "nl",
+  Japan: "jp",
+  Tunesien: "tn",
+  Belgien: "be",
+  Ägypten: "eg",
+  Iran: "ir",
+  Neuseeland: "nz",
+  Spanien: "es",
+  "Kap Verde": "cv",
+  "Saudi-Arabien": "sa",
+  Uruguay: "uy",
+  "UEFA-Playoff A": "eu",
+  "UEFA-Playoff B": "eu",
+  "UEFA-Playoff C": "eu",
+  "UEFA-Playoff D": "eu",
 };
 
 function escapeHtml(s) {
@@ -53,7 +59,13 @@ function escapeHtml(s) {
 }
 
 function teamFlag(name) {
-  return TEAM_FLAGS[name] || "🏳️";
+  const iso = TEAM_ISO[name];
+  const label = escapeHtml(name || "Team");
+  if (!iso) {
+    return `<span class="team-flag-fallback" title="${label}">🏳️</span>`;
+  }
+  const src = `${FLAG_CDN}/${iso}.png`;
+  return `<img class="team-flag-img" src="${src}" alt="${label}" title="${label}" loading="lazy" />`;
 }
 
 function formatKickoff(iso) {
@@ -549,7 +561,22 @@ class WmTippspielCard extends HTMLElement {
         min-width: 0;
       }
       .team.away { align-items: flex-end; text-align: right; }
-      .team-flag { font-size: 1.5rem; line-height: 1; }
+      .team-flag {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 24px;
+      }
+      .team-flag-img {
+        width: 32px;
+        height: 22px;
+        object-fit: cover;
+        border-radius: 3px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+        border: 1px solid rgba(255,255,255,0.12);
+      }
+      .team.away .team-flag-img { margin-left: auto; }
+      .team-flag-fallback { font-size: 1.5rem; line-height: 1; }
       .team-name {
         font-weight: 700;
         font-size: 0.88rem;
