@@ -50,6 +50,37 @@ class WmTippspielStore:
         self._data = loaded if loaded else _empty_store()
         if not self._data.get("matches"):
             self._data["matches"] = _default_matches()
+        elif self._sync_matches_from_bundle():
+            await self.async_save()
+
+    def _sync_matches_from_bundle(self) -> bool:
+        """Spielplan aus der Integration mit gespeicherten Tipps abgleichen."""
+        bundled = _default_matches()
+        if not bundled:
+            return False
+        stored_by_id = {
+            m["id"]: m for m in self._data.get("matches", []) if m.get("id")
+        }
+        synced: list[dict[str, Any]] = []
+        changed = False
+        for bundled_match in bundled:
+            match_id = bundled_match.get("id")
+            if not match_id:
+                continue
+            stored_match = stored_by_id.get(match_id)
+            if stored_match:
+                updated = {**stored_match, **bundled_match}
+                if updated != stored_match:
+                    changed = True
+                synced.append(updated)
+            else:
+                synced.append(bundled_match)
+                changed = True
+        if len(synced) != len(self._data.get("matches", [])):
+            changed = True
+        if changed:
+            self._data["matches"] = synced
+        return changed
 
     async def async_save(self) -> None:
         await self._store.async_save(self._data)

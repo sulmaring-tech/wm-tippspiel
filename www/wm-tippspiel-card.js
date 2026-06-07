@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.3.1";
+const WM_TIPPSPIEL_CARD_VERSION = "1.3.2";
 
 const ALL_GROUPS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 const KNOCKOUT_ROUNDS = [
@@ -50,10 +50,10 @@ const TEAM_ISO = {
   "Kap Verde": "cv",
   "Saudi-Arabien": "sa",
   Uruguay: "uy",
-  "UEFA-Playoff A": "eu",
-  "UEFA-Playoff B": "eu",
-  "UEFA-Playoff C": "eu",
-  "UEFA-Playoff D": "eu",
+  "Bosnien und Herzegowina": "ba",
+  Schweden: "se",
+  Türkei: "tr",
+  Tschechien: "cz",
 };
 
 function escapeHtml(s) {
