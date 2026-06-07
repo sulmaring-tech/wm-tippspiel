@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.3.14";
+const WM_TIPPSPIEL_CARD_VERSION = "1.3.15";
 
 const ALL_GROUPS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 const KNOCKOUT_ROUNDS = [
@@ -1680,21 +1680,22 @@ class WmTippspielCard extends HTMLElement {
     }
 
     const top3 = standings.slice(0, 3);
-    const medals = ["🥈", "🥇", "🥉"];
-    const classes = ["second", "first", "third"];
-    const podium =
-      top3.length >= 2
-        ? `<div class="podium">${top3
-            .map((s, i) => {
-              const cls = classes[i] || "";
-              return `<div class="podium-item ${cls}">
-                <div class="podium-rank">${medals[i] || s.rank}</div>
-                <div class="podium-name">${escapeHtml(s.name)}</div>
-                <div class="podium-pts">${s.points} Pkt.</div>
-              </div>`;
-            })
-            .join("")}</div>`
-        : "";
+    const podiumSlots = [
+      { player: top3[1], cls: "second", medal: "🥈" },
+      { player: top3[0], cls: "first", medal: "🥇" },
+      { player: top3[2], cls: "third", medal: "🥉" },
+    ].filter((slot) => slot.player);
+    const podium = podiumSlots.length
+      ? `<div class="podium">${podiumSlots
+          .map(({ player: s, cls, medal }) => {
+            return `<div class="podium-item ${cls}">
+              <div class="podium-rank">${medal}</div>
+              <div class="podium-name">${escapeHtml(s.name)}</div>
+              <div class="podium-pts">${s.points} Pkt.</div>
+            </div>`;
+          })
+          .join("")}</div>`
+      : "";
 
     const rows = standings
       .map((s, i) => {
