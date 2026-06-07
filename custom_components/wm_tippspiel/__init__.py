@@ -24,6 +24,7 @@ from .const import (
     DOMAIN,
     SERVICE_ADD_PLAYER,
     SERVICE_CLEAR_RESULT,
+    SERVICE_CLEAR_ALL_RESULTS,
     SERVICE_REMOVE_PLAYER,
     SERVICE_SET_RESULT,
     SERVICE_SET_TIP,
@@ -128,10 +129,21 @@ def _register_services(hass: HomeAssistant) -> None:
 
     async def _clear_result(call: ServiceCall) -> None:
         store = get_store(hass, call.data.get("entry_id"))
-        if not store.clear_result(call.data[ATTR_MATCH_ID]):
-            raise ValueError(f"Kein Ergebnis für Spiel: {call.data[ATTR_MATCH_ID]}")
+        match_id = call.data[ATTR_MATCH_ID]
+        if not store.clear_result(match_id):
+            raise ValueError(
+                f"Kein Ergebnis für Spiel: {match_id}. "
+                f"Gespeichert: {store.describe_stored_results()}"
+            )
         await store.async_save()
         _async_notify(hass)
+
+    async def _clear_all_results(call: ServiceCall) -> None:
+        store = get_store(hass, call.data.get("entry_id"))
+        cleared = store.clear_all_results()
+        if cleared:
+            await store.async_save()
+            _async_notify(hass)
 
     async def _add_player(call: ServiceCall) -> None:
         entry_id = call.data.get("entry_id")
@@ -215,6 +227,12 @@ def _register_services(hass: HomeAssistant) -> None:
                 vol.Required(ATTR_MATCH_ID): cv.string,
             }
         ),
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_CLEAR_ALL_RESULTS,
+        _clear_all_results,
+        schema=vol.Schema({vol.Optional("entry_id"): cv.string}),
     )
     hass.services.async_register(
         DOMAIN,

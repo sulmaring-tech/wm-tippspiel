@@ -118,6 +118,7 @@ class WmTippspielLeaderboardSensor(WmTippspielBaseSensor):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         attrs: dict[str, Any] = {
+            "entry_id": self._entry.entry_id,
             ATTR_STANDINGS: self._store.compute_standings(),
             ATTR_PLAYERS: self._store.get_players(),
             ATTR_MATCHES: self._store.get_matches(),

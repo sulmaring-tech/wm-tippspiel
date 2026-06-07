@@ -38,6 +38,13 @@ clear_result:
     match_id:
       name: Spiel-ID
 
+clear_all_results:
+  name: Alle Ergebnisse löschen
+  description: Entfernt alle eingetragenen Spielergebnisse und setzt alle Punkte zurück.
+  fields:
+    entry_id:
+      name: Konfigurations-ID
+
 add_player:
   name: Spieler hinzufügen
   fields:

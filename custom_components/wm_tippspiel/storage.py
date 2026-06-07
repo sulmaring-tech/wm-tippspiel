@@ -162,6 +162,29 @@ class WmTippspielStore:
         self._data["results"] = results
         return True
 
+    def clear_all_results(self) -> int:
+        results = self._data.get("results", {})
+        count = len(results)
+        self._data["results"] = {}
+        return count
+
+    def get_results(self) -> dict[str, dict[str, int]]:
+        return dict(self._data.get("results", {}))
+
+    def describe_stored_results(self) -> str:
+        results = self._data.get("results", {})
+        if not results:
+            return "keine Ergebnisse gespeichert"
+        parts: list[str] = []
+        for match_id, result in sorted(results.items()):
+            match = self.get_match(match_id)
+            if match:
+                label = f"{match.get('home', '?')} vs {match.get('away', '?')}"
+                parts.append(f"{match_id} ({label} {result['home']}:{result['away']})")
+            else:
+                parts.append(f"{match_id} ({result['home']}:{result['away']})")
+        return ", ".join(parts)
+
     def get_tip(self, player_id: str, match_id: str) -> dict[str, int] | None:
         return self._data.get("tips", {}).get(player_id, {}).get(match_id)
 

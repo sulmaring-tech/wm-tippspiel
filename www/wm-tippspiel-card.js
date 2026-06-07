@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.3.13";
+const WM_TIPPSPIEL_CARD_VERSION = "1.3.14";
 
 const ALL_GROUPS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 const KNOCKOUT_ROUNDS = [
@@ -523,6 +523,12 @@ class WmTippspielCard extends HTMLElement {
         this._clearResult(clearResult);
         return;
       }
+      const clearAllResults = ev.target.closest("[data-action=clear-all-results]");
+      if (clearAllResults) {
+        ev.preventDefault();
+        this._clearAllResults(clearAllResults);
+        return;
+      }
       const addPlayer = ev.target.closest("[data-action=add-player-card]");
       if (addPlayer) {
         ev.preventDefault();
@@ -673,6 +679,13 @@ class WmTippspielCard extends HTMLElement {
     this._stateFingerprintCache = this._stateFingerprint(this._state);
   }
 
+  _applyClearedAllResults() {
+    if (!this._state?.attributes) return;
+    const attrs = this._state.attributes;
+    this._state = { ...this._state, attributes: { ...attrs, results: {} } };
+    this._stateFingerprintCache = this._stateFingerprint(this._state);
+  }
+
   _renderAdminResultControls(m, results) {
     if (!this._isAdmin()) return "";
     const res = results[m.id];
@@ -680,7 +693,7 @@ class WmTippspielCard extends HTMLElement {
     const homeVal = draft.home ?? res?.home ?? "";
     const awayVal = draft.away ?? res?.away ?? "";
     let html = `<div class="admin-row">
-      <span class="admin-label">${res ? "Ergebnis bearbeiten" : "Ergebnis eintragen"}</span>
+      <span class="admin-label">${res ? "Ergebnis bearbeiten" : "Ergebnis eintragen"} <span class="match-id">(${m.id})</span></span>
       <input class="score-input" type="number" min="0" max="20" data-match="${m.id}" data-side="home" data-kind="result" value="${homeVal}" placeholder="0" />
       <span class="sep">:</span>
       <input class="score-input" type="number" min="0" max="20" data-match="${m.id}" data-side="away" data-kind="result" value="${awayVal}" placeholder="0" />
@@ -903,8 +916,22 @@ class WmTippspielCard extends HTMLElement {
     return this._config.accent_color || DEFAULT_ACCENT;
   }
 
-  async _callService(service, data) {
-    await this._hass.callService("wm_tippspiel", service, data);
+  _entryId() {
+    const entryId = this._state?.attributes?.entry_id;
+    if (entryId) return entryId;
+    const entityId = this._config?.entity;
+    const uniqueId = this._hass?.entities?.[entityId]?.unique_id || "";
+    if (uniqueId.endsWith("_leaderboard")) {
+      return uniqueId.slice(0, -"_leaderboard".length);
+    }
+    return null;
+  }
+
+  async _callService(service, data = {}) {
+    const payload = { ...data };
+    const entryId = this._entryId();
+    if (entryId && payload.entry_id == null) payload.entry_id = entryId;
+    await this._hass.callService("wm_tippspiel", service, payload);
   }
 
   _styles() {
@@ -1234,6 +1261,25 @@ class WmTippspielCard extends HTMLElement {
         opacity: 0.55;
         letter-spacing: 0.05em;
         width: 100%;
+      }
+      .match-id {
+        text-transform: none;
+        letter-spacing: 0;
+        font-weight: 600;
+        opacity: 0.85;
+      }
+      .results-admin-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+        padding: 10px 12px;
+        border-radius: 12px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.08);
+        font-size: 0.82rem;
       }
       .group-label {
         font-size: 0.72rem;
@@ -1694,7 +1740,15 @@ class WmTippspielCard extends HTMLElement {
     if (!matches.length) {
       return `<div class="empty"><div class="empty-icon">📅</div><h3>Keine Spiele</h3><p>Gruppenfilter in den Karten-Einstellungen prüfen.</p></div>`;
     }
-    return this._renderMatchAccordions(matches, (m) => {
+    const resultIds = Object.keys(results || {});
+    let adminBar = "";
+    if (this._isAdmin() && resultIds.length) {
+      adminBar = `<div class="results-admin-bar">
+        <span>${resultIds.length} Ergebnis${resultIds.length === 1 ? "" : "se"} gespeichert: <strong>${escapeHtml(resultIds.join(", "))}</strong></span>
+        <button type="button" class="btn btn-danger" data-action="clear-all-results">Alle Ergebnisse löschen</button>
+      </div>`;
+    }
+    return adminBar + this._renderMatchAccordions(matches, (m) => {
       const res = results[m.id];
       const scoreHtml = `<span class="score-static">${res ? res.home : "–"}</span><span class="sep">:</span><span class="score-static">${res ? res.away : "–"}</span>`;
       let extra = res ? `<span class="badge badge-result">✓ Endstand ${res.home}:${res.away}</span>` : "";
@@ -1898,6 +1952,29 @@ class WmTippspielCard extends HTMLElement {
     } finally {
       btn.disabled = false;
       btn.textContent = "Ergebnis löschen";
+    }
+  }
+
+  async _clearAllResults(btn) {
+    const count = Object.keys(this._state?.attributes?.results || {}).length;
+    if (!count) {
+      this._showToast("Es sind keine Ergebnisse gespeichert.", "error");
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = "Löschen…";
+    try {
+      await this._callService("clear_all_results", {});
+      this._applyClearedAllResults();
+      this._draftResults = {};
+      this._renderShell();
+      this._showToast("Alle Ergebnisse gelöscht ✓", "success");
+    } catch (err) {
+      console.error("[wm-tippspiel-card] clear_all_results failed:", err);
+      this._showToast(`Löschen fehlgeschlagen: ${err?.message || err}`, "error");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Alle Ergebnisse löschen";
     }
   }
 }
