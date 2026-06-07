@@ -1,0 +1,144 @@
+"""Sensor-Plattform für WM Tippspiel."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from homeassistant.components.sensor import SensorEntity
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.entity import EntityCategory
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
+from .const import (
+    ATTR_MATCHES,
+    ATTR_PLAYERS,
+    ATTR_RESULTS,
+    ATTR_STANDINGS,
+    ATTR_TIPS,
+    DOMAIN,
+)
+from .storage import WmTippspielStore
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    store: WmTippspielStore = hass.data[DOMAIN][entry.entry_id]
+    registry_key = f"{DOMAIN}_{entry.entry_id}_add_entities"
+    hass.data.setdefault(DOMAIN, {})[registry_key] = async_add_entities
+
+    entities: list[SensorEntity] = [
+        WmTippspielLeaderboardSensor(entry, store),
+    ]
+    entities.extend(_player_entities(entry, store))
+    async_add_entities(entities)
+
+
+def _player_entities(
+    entry: ConfigEntry, store: WmTippspielStore
+) -> list[WmTippspielPlayerSensor]:
+    return [WmTippspielPlayerSensor(entry, store, player) for player in store.get_players()]
+
+
+async def async_add_player_entities(
+    hass: HomeAssistant, entry_id: str, store: WmTippspielStore, player: dict[str, str]
+) -> None:
+    """Registriert einen neuen Spieler-Sensor nach add_player."""
+    registry_key = f"{DOMAIN}_{entry_id}_add_entities"
+    async_add_entities = hass.data.get(DOMAIN, {}).get(registry_key)
+    if async_add_entities is None:
+        return
+    entries = hass.config_entries.async_entries(DOMAIN)
+    entry = next((e for e in entries if e.entry_id == entry_id), None)
+    if entry is None:
+        return
+    async_add_entities([WmTippspielPlayerSensor(entry, store, player)])
+
+
+class WmTippspielBaseSensor(SensorEntity):
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:soccer"
+
+    def __init__(self, entry: ConfigEntry, store: WmTippspielStore) -> None:
+        self._entry = entry
+        self._store = store
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+            "name": entry.title,
+            "manufacturer": "WM Tippspiel",
+        }
+
+    async def async_added_to_hass(self) -> None:
+        @callback
+        def _handle_update(_event) -> None:
+            self.async_write_ha_state()
+
+        self.async_on_remove(
+            self.hass.bus.async_listen(f"{DOMAIN}_updated", _handle_update)
+        )
+
+
+class WmTippspielLeaderboardSensor(WmTippspielBaseSensor):
+    _attr_name = "Rangliste"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_unique_id = None
+
+    @property
+    def unique_id(self) -> str:
+        return f"{self._entry.entry_id}_leaderboard"
+
+    @property
+    def native_value(self) -> str:
+        standings = self._store.compute_standings()
+        if not standings:
+            return "0 Spieler"
+        leader = standings[0]
+        return f"{leader['name']} ({leader['points']} Pkt.)"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {
+            ATTR_STANDINGS: self._store.compute_standings(),
+            ATTR_PLAYERS: self._store.get_players(),
+            ATTR_MATCHES: self._store.get_matches(),
+            ATTR_TIPS: self._store.data.get("tips", {}),
+            ATTR_RESULTS: self._store.data.get("results", {}),
+        }
+
+
+class WmTippspielPlayerSensor(WmTippspielBaseSensor):
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+        self, entry: ConfigEntry, store: WmTippspielStore, player: dict[str, str]
+    ) -> None:
+        super().__init__(entry, store)
+        self._player = player
+        self._attr_name = player["name"]
+        self._attr_unique_id = f"{entry.entry_id}_player_{player['id']}"
+
+    @property
+    def native_value(self) -> int:
+        return self._store.player_points(self._player["id"])
+
+    @property
+    def native_unit_of_measurement(self) -> str:
+        return "Pkt."
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        tips = self._store.data.get("tips", {}).get(self._player["id"], {})
+        standings = {
+            row["id"]: row for row in self._store.compute_standings()
+        }.get(self._player["id"], {})
+        return {
+            "player_id": self._player["id"],
+            "tips": tips,
+            "exact": standings.get("exact", 0),
+            "tendency": standings.get("tendency", 0),
+            "tipped": standings.get("tipped", 0),
+            "rank": standings.get("rank"),
+        }

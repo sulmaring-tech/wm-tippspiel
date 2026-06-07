@@ -1,0 +1,17 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up World Cup tipping game",
+        "description": "Choose a name and optionally add the first players.",
+        "data": {
+          "title": "Game name",
+          "players": "Players (comma-separated or one per line)"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "This tipping game is already configured."
+    }
+  }
+}

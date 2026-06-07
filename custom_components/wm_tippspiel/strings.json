@@ -1,0 +1,17 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "WM Tippspiel einrichten",
+        "description": "Lege einen Namen und optional die ersten Mitspieler fest.",
+        "data": {
+          "title": "Name des Tippspiels",
+          "players": "Mitspieler (kommagetrennt oder je Zeile)"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Dieses Tippspiel ist bereits eingerichtet."
+    }
+  }
+}

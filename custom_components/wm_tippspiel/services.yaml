@@ -1,0 +1,46 @@
+set_tip:
+  name: Tipp abgeben
+  description: Speichert einen Tipp für ein Spiel.
+  fields:
+    entry_id:
+      name: Konfigurations-ID
+      description: Optional, falls mehrere Tippspiele existieren.
+    player_id:
+      name: Spieler-ID
+      description: ID des Tippers (siehe Sensor-Attribute).
+    match_id:
+      name: Spiel-ID
+      description: ID des WM-Spiels (z. B. A1).
+    home:
+      name: Tore Heim
+    away:
+      name: Tore Auswärts
+
+set_result:
+  name: Ergebnis eintragen
+  description: Trägt das offizielle Spielergebnis ein und berechnet Punkte neu.
+  fields:
+    entry_id:
+      name: Konfigurations-ID
+    match_id:
+      name: Spiel-ID
+    home:
+      name: Tore Heim
+    away:
+      name: Tore Auswärts
+
+add_player:
+  name: Spieler hinzufügen
+  fields:
+    entry_id:
+      name: Konfigurations-ID
+    name:
+      name: Name
+
+remove_player:
+  name: Spieler entfernen
+  fields:
+    entry_id:
+      name: Konfigurations-ID
+    player_id:
+      name: Spieler-ID

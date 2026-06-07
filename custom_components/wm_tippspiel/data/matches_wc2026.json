@@ -1,0 +1,57 @@
+[
+  {"id": "A1", "stage": "Gruppenspiel", "group": "A", "home": "Mexiko", "away": "Südafrika", "kickoff": "2026-06-11T19:00:00", "venue": "Mexico City"},
+  {"id": "A2", "stage": "Gruppenspiel", "group": "A", "home": "Südkorea", "away": "UEFA-Playoff D", "kickoff": "2026-06-12T14:00:00", "venue": "Guadalajara"},
+  {"id": "A3", "stage": "Gruppenspiel", "group": "A", "home": "UEFA-Playoff D", "away": "Südafrika", "kickoff": "2026-06-18T17:00:00", "venue": "Atlanta"},
+  {"id": "A4", "stage": "Gruppenspiel", "group": "A", "home": "Mexiko", "away": "Südkorea", "kickoff": "2026-06-19T20:00:00", "venue": "Guadalajara"},
+  {"id": "A5", "stage": "Gruppenspiel", "group": "A", "home": "UEFA-Playoff D", "away": "Mexiko", "kickoff": "2026-06-24T20:00:00", "venue": "Mexico City"},
+  {"id": "A6", "stage": "Gruppenspiel", "group": "A", "home": "Südafrika", "away": "Südkorea", "kickoff": "2026-06-25T20:00:00", "venue": "Monterrey"},
+
+  {"id": "B1", "stage": "Gruppenspiel", "group": "B", "home": "Kanada", "away": "UEFA-Playoff A", "kickoff": "2026-06-12T19:00:00", "venue": "Toronto"},
+  {"id": "B2", "stage": "Gruppenspiel", "group": "B", "home": "Katar", "away": "Schweiz", "kickoff": "2026-06-13T14:00:00", "venue": "San Francisco"},
+  {"id": "B3", "stage": "Gruppenspiel", "group": "B", "home": "UEFA-Playoff A", "away": "Katar", "kickoff": "2026-06-18T14:00:00", "venue": "Vancouver"},
+  {"id": "B4", "stage": "Gruppenspiel", "group": "B", "home": "Schweiz", "away": "Kanada", "kickoff": "2026-06-19T17:00:00", "venue": "Toronto"},
+  {"id": "B5", "stage": "Gruppenspiel", "group": "B", "home": "UEFA-Playoff A", "away": "Schweiz", "kickoff": "2026-06-24T17:00:00", "venue": "Los Angeles"},
+  {"id": "B6", "stage": "Gruppenspiel", "group": "B", "home": "Kanada", "away": "Katar", "kickoff": "2026-06-25T17:00:00", "venue": "Vancouver"},
+
+  {"id": "C1", "stage": "Gruppenspiel", "group": "C", "home": "Brasilien", "away": "Marokko", "kickoff": "2026-06-13T19:00:00", "venue": "New York/New Jersey"},
+  {"id": "C2", "stage": "Gruppenspiel", "group": "C", "home": "Haiti", "away": "Schottland", "kickoff": "2026-06-14T14:00:00", "venue": "Boston"},
+  {"id": "C3", "stage": "Gruppenspiel", "group": "C", "home": "Schottland", "away": "Marokko", "kickoff": "2026-06-19T14:00:00", "venue": "Boston"},
+  {"id": "C4", "stage": "Gruppenspiel", "group": "C", "home": "Brasilien", "away": "Haiti", "kickoff": "2026-06-20T20:00:00", "venue": "Philadelphia"},
+  {"id": "C5", "stage": "Gruppenspiel", "group": "C", "home": "Schottland", "away": "Brasilien", "kickoff": "2026-06-25T14:00:00", "venue": "Miami"},
+  {"id": "C6", "stage": "Gruppenspiel", "group": "C", "home": "Marokko", "away": "Haiti", "kickoff": "2026-06-25T20:00:00", "venue": "Atlanta"},
+
+  {"id": "D1", "stage": "Gruppenspiel", "group": "D", "home": "USA", "away": "Paraguay", "kickoff": "2026-06-12T20:00:00", "venue": "Los Angeles"},
+  {"id": "D2", "stage": "Gruppenspiel", "group": "D", "home": "Australien", "away": "UEFA-Playoff C", "kickoff": "2026-06-13T17:00:00", "venue": "Vancouver"},
+  {"id": "D3", "stage": "Gruppenspiel", "group": "D", "home": "UEFA-Playoff C", "away": "Paraguay", "kickoff": "2026-06-19T17:00:00", "venue": "San Francisco"},
+  {"id": "D4", "stage": "Gruppenspiel", "group": "D", "home": "USA", "away": "Australien", "kickoff": "2026-06-20T17:00:00", "venue": "Seattle"},
+  {"id": "D5", "stage": "Gruppenspiel", "group": "D", "home": "UEFA-Playoff C", "away": "USA", "kickoff": "2026-06-25T17:00:00", "venue": "Los Angeles"},
+  {"id": "D6", "stage": "Gruppenspiel", "group": "D", "home": "Paraguay", "away": "Australien", "kickoff": "2026-06-26T20:00:00", "venue": "San Francisco"},
+
+  {"id": "E1", "stage": "Gruppenspiel", "group": "E", "home": "Deutschland", "away": "Curaçao", "kickoff": "2026-06-14T19:00:00", "venue": "Houston"},
+  {"id": "E2", "stage": "Gruppenspiel", "group": "E", "home": "Elfenbeinküste", "away": "Ecuador", "kickoff": "2026-06-15T14:00:00", "venue": "Philadelphia"},
+  {"id": "E3", "stage": "Gruppenspiel", "group": "E", "home": "Deutschland", "away": "Elfenbeinküste", "kickoff": "2026-06-20T14:00:00", "venue": "Toronto"},
+  {"id": "E4", "stage": "Gruppenspiel", "group": "E", "home": "Ecuador", "away": "Curaçao", "kickoff": "2026-06-21T17:00:00", "venue": "Kansas City"},
+  {"id": "E5", "stage": "Gruppenspiel", "group": "E", "home": "Ecuador", "away": "Deutschland", "kickoff": "2026-06-26T17:00:00", "venue": "New York/New Jersey"},
+  {"id": "E6", "stage": "Gruppenspiel", "group": "E", "home": "Curaçao", "away": "Elfenbeinküste", "kickoff": "2026-06-26T20:00:00", "venue": "Philadelphia"},
+
+  {"id": "F1", "stage": "Gruppenspiel", "group": "F", "home": "Niederlande", "away": "Japan", "kickoff": "2026-06-14T14:00:00", "venue": "Dallas"},
+  {"id": "F2", "stage": "Gruppenspiel", "group": "F", "home": "UEFA-Playoff B", "away": "Tunesien", "kickoff": "2026-06-15T19:00:00", "venue": "Monterrey"},
+  {"id": "F3", "stage": "Gruppenspiel", "group": "F", "home": "Tunesien", "away": "Japan", "kickoff": "2026-06-20T17:00:00", "venue": "Monterrey"},
+  {"id": "F4", "stage": "Gruppenspiel", "group": "F", "home": "Niederlande", "away": "UEFA-Playoff B", "kickoff": "2026-06-21T20:00:00", "venue": "Houston"},
+  {"id": "F5", "stage": "Gruppenspiel", "group": "F", "home": "Tunesien", "away": "Niederlande", "kickoff": "2026-06-26T14:00:00", "venue": "Kansas City"},
+  {"id": "F6", "stage": "Gruppenspiel", "group": "F", "home": "Japan", "away": "UEFA-Playoff B", "kickoff": "2026-06-26T20:00:00", "venue": "Dallas"},
+
+  {"id": "G1", "stage": "Gruppenspiel", "group": "G", "home": "Belgien", "away": "Ägypten", "kickoff": "2026-06-15T17:00:00", "venue": "Seattle"},
+  {"id": "G2", "stage": "Gruppenspiel", "group": "G", "home": "Iran", "away": "Neuseeland", "kickoff": "2026-06-16T14:00:00", "venue": "Los Angeles"},
+  {"id": "G3", "stage": "Gruppenspiel", "group": "G", "home": "Neuseeland", "away": "Ägypten", "kickoff": "2026-06-21T14:00:00", "venue": "Vancouver"},
+  {"id": "G4", "stage": "Gruppenspiel", "group": "G", "home": "Belgien", "away": "Iran", "kickoff": "2026-06-22T17:00:00", "venue": "Los Angeles"},
+  {"id": "G5", "stage": "Gruppenspiel", "group": "G", "home": "Neuseeland", "away": "Belgien", "kickoff": "2026-06-27T17:00:00", "venue": "Seattle"},
+  {"id": "G6", "stage": "Gruppenspiel", "group": "G", "home": "Ägypten", "away": "Iran", "kickoff": "2026-06-27T20:00:00", "venue": "San Francisco"},
+
+  {"id": "H1", "stage": "Gruppenspiel", "group": "H", "home": "Spanien", "away": "Kap Verde", "kickoff": "2026-06-16T19:00:00", "venue": "Atlanta"},
+  {"id": "H2", "stage": "Gruppenspiel", "group": "H", "home": "Saudi-Arabien", "away": "Uruguay", "kickoff": "2026-06-17T14:00:00", "venue": "Miami"},
+  {"id": "H3", "stage": "Gruppenspiel", "group": "H", "home": "Uruguay", "away": "Kap Verde", "kickoff": "2026-06-22T14:00:00", "venue": "Miami"},
+  {"id": "H4", "stage": "Gruppenspiel", "group": "H", "home": "Spanien", "away": "Saudi-Arabien", "kickoff": "2026-06-23T17:00:00", "venue": "Atlanta"},
+  {"id": "H5", "stage": "Gruppenspiel", "group": "H", "home": "Uruguay", "away": "Spanien", "kickoff": "2026-06-27T14:00:00", "venue": "Guadalajara"},
+  {"id": "H6", "stage": "Gruppenspiel", "group": "H", "home": "Kap Verde", "away": "Saudi-Arabien", "kickoff": "2026-06-27T20:00:00", "venue": "Houston"}
+]
