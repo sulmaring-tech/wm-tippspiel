@@ -69,6 +69,7 @@ class WmTippspielCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         result: dict[str, Any] = {
             "last_sync": datetime.now().isoformat(),
             "updated_matches": 0,
+            "schedule_updates": 0,
             "api_enabled": self._auto_enabled(),
             "error": None,
         }
@@ -78,11 +79,14 @@ class WmTippspielCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         client = ApiFootballClient(self.hass, self._api_key())
         try:
             fixtures = await client.async_get_fixtures()
+            schedule = ApiFootballClient.parse_schedule_updates(fixtures)
+            schedule_updated = self._apply_schedule(schedule)
+            result["schedule_updates"] = schedule_updated
             finished = ApiFootballClient.parse_finished_results(fixtures)
             updated = self._apply_results(finished)
             result["updated_matches"] = updated
             result["finished_count"] = len(finished)
-            if updated:
+            if updated or schedule_updated:
                 await self.store.async_save()
                 self.hass.bus.async_fire(f"{DOMAIN}_updated")
         except ApiFootballError as err:
@@ -115,6 +119,35 @@ class WmTippspielCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 home,
                 away,
             )
+        return updated
+
+    def _apply_schedule(self, schedule: list[dict[str, Any]]) -> int:
+        updated = 0
+        for item in schedule:
+            match_id = self._find_match_id(
+                item.get("home_id"),
+                item.get("away_id"),
+                item.get("kickoff"),
+            )
+            if not match_id:
+                continue
+            match = self.store.get_match(match_id)
+            if not match:
+                continue
+            home_name = self._team_to_name.get(int(item["home_id"])) if item.get("home_id") else None
+            away_name = self._team_to_name.get(int(item["away_id"])) if item.get("away_id") else None
+            kickoff = item.get("kickoff")
+            if match.get("group"):
+                if self.store.update_match_schedule(
+                    match_id,
+                    kickoff=str(kickoff) if kickoff else None,
+                    home=home_name,
+                    away=away_name,
+                ):
+                    updated += 1
+            elif kickoff and str(match.get("kickoff") or "") != str(kickoff):
+                if self.store.update_match_schedule(match_id, kickoff=str(kickoff)):
+                    updated += 1
         return updated
 
     def _find_match_id(

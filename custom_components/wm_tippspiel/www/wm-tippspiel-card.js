@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.5.1";
+const WM_TIPPSPIEL_CARD_VERSION = "1.6.0";
 
 const ALL_GROUPS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 const KNOCKOUT_ROUNDS = [
@@ -11,6 +11,7 @@ const KNOCKOUT_ROUNDS = [
 ];
 const DEFAULT_ACCENT = "#fbbf24";
 const DEFAULT_ACCENT_2 = "#22c55e";
+const KICKOFF_SOON_MINUTES = 120;
 const FLAG_CDN = "https://flagcdn.com/w40";
 
 const TABS = [
@@ -92,9 +93,35 @@ function formatKickoff(iso) {
   }
 }
 
-function isPastKickoff(iso, bufferMinutes = 5) {
+function isPastKickoff(iso, bufferMinutes = 0) {
   if (!iso) return false;
   return Date.now() >= new Date(iso).getTime() - bufferMinutes * 60 * 1000;
+}
+
+function minutesUntilKickoff(iso) {
+  if (!iso) return null;
+  return (new Date(iso).getTime() - Date.now()) / 60000;
+}
+
+function matchTipStatus(m, tip, res) {
+  if (isPastKickoff(m.kickoff, 0)) return "locked";
+  if (res && tip?.home != null && tip?.away != null && tip.home !== "" && tip.away !== "") {
+    if (Number(tip.home) === Number(res.home) && Number(tip.away) === Number(res.away)) {
+      return "exact";
+    }
+  }
+  if (tip?.home != null && tip?.away != null && tip.home !== "" && tip.away !== "") return "saved";
+  const mins = minutesUntilKickoff(m.kickoff);
+  if (mins != null && mins >= 0 && mins <= KICKOFF_SOON_MINUTES) return "soon";
+  return "pending";
+}
+
+function tipStatusLabel(status) {
+  if (status === "saved") return "Tipp abgegeben";
+  if (status === "soon") return "Anpfiff bald";
+  if (status === "locked") return "Gesperrt";
+  if (status === "exact") return "Exakter Tipp";
+  return "";
 }
 
 function normalizeGroups(groups) {
@@ -146,6 +173,8 @@ function defaultConfig(overrides = {}) {
     show_rules: true,
     match_columns: "auto",
     auto_save_tips: true,
+    compact_mode: true,
+    show_group_tables: true,
     accent_color: DEFAULT_ACCENT,
     ...overrides,
   };
@@ -337,6 +366,12 @@ class WmTippspielCardEditor extends HTMLElement {
           </ha-formfield>
           <ha-formfield label="Tipps automatisch speichern">
             <ha-switch data-key="auto_save_tips"></ha-switch>
+          </ha-formfield>
+          <ha-formfield label="Kompakter Modus (eine Zeile pro Spiel)">
+            <ha-switch data-key="compact_mode"></ha-switch>
+          </ha-formfield>
+          <ha-formfield label="Gruppentabellen in der Vorrunde">
+            <ha-switch data-key="show_group_tables"></ha-switch>
           </ha-formfield>
           <p class="ed-hint">Bei Auto-Save wird gespeichert, sobald beide Tore eingegeben sind (ca. 1 Sek. Pause). Sonst erscheint der Button „Tipp speichern“.</p>
           <ha-formfield label="Admin-Modus (Ergebnisse eintragen)">
@@ -617,12 +652,21 @@ class WmTippspielCard extends HTMLElement {
   _stateFingerprint(state) {
     if (!state) return "";
     const a = state.attributes || {};
+    const playerEntities = a.player_entities || {};
+    const playerTipsFp = {};
+    if (this._selectedPlayer && playerEntities[this._selectedPlayer]) {
+      const ent = this._hass?.states[playerEntities[this._selectedPlayer]];
+      playerTipsFp[this._selectedPlayer] = ent?.attributes?.tips;
+    } else if (this._selectedPlayer && a.tips?.[this._selectedPlayer]) {
+      playerTipsFp[this._selectedPlayer] = a.tips[this._selectedPlayer];
+    }
     return JSON.stringify({
       players: a.players,
       standings: a.standings,
       matches: a.matches,
-      tips: a.tips,
       results: a.results,
+      group_tables: a.group_tables,
+      playerTips: playerTipsFp,
     });
   }
 
@@ -665,11 +709,22 @@ class WmTippspielCard extends HTMLElement {
   }
 
   _applySavedTip(matchId, home, away) {
-    if (!this._state?.attributes || !this._selectedPlayer) return;
-    const attrs = this._state.attributes;
-    const tips = { ...(attrs.tips || {}) };
-    tips[this._selectedPlayer] = { ...(tips[this._selectedPlayer] || {}), [matchId]: { home, away } };
-    this._state = { ...this._state, attributes: { ...attrs, tips } };
+    if (!this._selectedPlayer) return;
+    const playerId = this._selectedPlayer;
+    const ent = this._state?.attributes?.player_entities?.[playerId];
+    if (ent && this._hass?.states[ent]) {
+      const st = this._hass.states[ent];
+      const tips = { ...(st.attributes?.tips || {}), [matchId]: { home, away } };
+      this._hass.states[ent] = {
+        ...st,
+        attributes: { ...st.attributes, tips },
+      };
+    } else if (this._state?.attributes) {
+      const attrs = this._state.attributes;
+      const tips = { ...(attrs.tips || {}) };
+      tips[playerId] = { ...(tips[playerId] || {}), [matchId]: { home, away } };
+      this._state = { ...this._state, attributes: { ...attrs, tips } };
+    }
     this._stateFingerprintCache = this._stateFingerprint(this._state);
   }
 
@@ -740,11 +795,24 @@ class WmTippspielCard extends HTMLElement {
   }
 
   _getSavedTip(matchId) {
-    return this._state?.attributes?.tips?.[this._selectedPlayer]?.[matchId] || null;
+    const playerId = this._selectedPlayer;
+    if (!playerId) return null;
+    return this._playerTipsFor(playerId)[matchId] || null;
+  }
+
+  _playerTipsFor(playerId, attrs = null) {
+    const a = attrs || this._state?.attributes || {};
+    const ent = (a.player_entities || {})[playerId];
+    if (ent && this._hass?.states[ent]) {
+      return this._hass.states[ent].attributes?.tips || {};
+    }
+    return (a.tips || {})[playerId] || {};
   }
 
   _scheduleAutoSaveTip(matchId) {
     if (!this._autoSaveEnabled() || !this._selectedPlayer) return;
+    const match = (this._state?.attributes?.matches || []).find((m) => m.id === matchId);
+    if (match && isPastKickoff(match.kickoff, 0)) return;
     clearTimeout(this._autoSaveTimers[matchId]);
     this._autoSaveTimers[matchId] = setTimeout(() => {
       delete this._autoSaveTimers[matchId];
@@ -838,12 +906,17 @@ class WmTippspielCard extends HTMLElement {
   _data() {
     const a = this._state?.attributes || {};
     const players = a.players || [];
+    const playerId = this._selectedPlayer;
+    const tips = {};
+    if (playerId) tips[playerId] = this._playerTipsFor(playerId, a);
     return {
       standings: a.standings || [],
       players,
       matches: a.matches || [],
-      tips: this._filterTipsForPlayers(a.tips || {}, players),
+      tips,
       results: a.results || {},
+      group_tables: a.group_tables || {},
+      player_entities: a.player_entities || {},
     };
   }
 
@@ -1115,6 +1188,133 @@ class WmTippspielCard extends HTMLElement {
         margin-bottom: 12px;
         background: rgba(0,0,0,0.12);
         backdrop-filter: blur(6px);
+        transition: box-shadow 0.2s ease, border-color 0.2s ease;
+      }
+      .match.tip-status-saved {
+        border-left: 3px solid #22c55e;
+      }
+      .match.tip-status-soon {
+        border-left: 3px solid #eab308;
+      }
+      .match.tip-status-locked {
+        border-left: 3px solid #94a3b8;
+        opacity: 0.72;
+      }
+      .match.tip-status-exact {
+        box-shadow: 0 0 0 2px #fbbf24, 0 0 12px rgba(251,191,36,0.25);
+        border-color: rgba(251,191,36,0.45);
+      }
+      .match.compact {
+        padding: 8px 10px;
+        margin-bottom: 6px;
+        border-radius: 10px;
+      }
+      .match-row-compact {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .match-row-compact .teams-inline {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex: 1;
+        min-width: 0;
+        font-size: 0.78rem;
+        font-weight: 700;
+      }
+      .match-row-compact .team-flag-img {
+        width: 22px;
+        height: 15px;
+      }
+      .match-row-compact .score-box {
+        padding: 2px 6px;
+        gap: 4px;
+      }
+      .match-row-compact .score-input {
+        width: 30px;
+        height: 30px;
+        font-size: 0.82rem;
+      }
+      .match-row-compact .score-static {
+        min-width: 18px;
+        text-align: center;
+        font-weight: 800;
+      }
+      .match-row-compact .match-status-badge {
+        font-size: 0.62rem;
+        padding: 3px 8px;
+        border-radius: 999px;
+        white-space: nowrap;
+        font-weight: 700;
+      }
+      .match-status-badge.status-saved { background: rgba(34,197,94,0.18); color: #86efac; }
+      .match-status-badge.status-soon { background: rgba(234,179,8,0.18); color: #fde047; }
+      .match-status-badge.status-locked { background: rgba(148,163,184,0.15); color: #cbd5e1; }
+      .match-status-badge.status-exact { background: rgba(251,191,36,0.2); color: #fde68a; border: 1px solid rgba(251,191,36,0.45); }
+      .group-tables {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+        gap: 8px;
+        margin-bottom: 14px;
+      }
+      .group-table {
+        border-radius: 10px;
+        border: 1px solid rgba(255,255,255,0.08);
+        background: rgba(0,0,0,0.15);
+        overflow: hidden;
+        font-size: 0.68rem;
+      }
+      .group-table-head {
+        padding: 6px 8px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        background: rgba(255,255,255,0.04);
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+      }
+      .group-table-row {
+        display: grid;
+        grid-template-columns: 14px 1fr repeat(4, 18px);
+        gap: 4px;
+        padding: 4px 6px;
+        align-items: center;
+      }
+      .group-table-row.head {
+        opacity: 0.5;
+        font-weight: 700;
+        font-size: 0.58rem;
+        text-transform: uppercase;
+      }
+      .group-table-row .pos { opacity: 0.65; font-weight: 700; }
+      .group-table-row .team-cell {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-weight: 600;
+      }
+      .group-table-row .num { text-align: center; font-variant-numeric: tabular-nums; }
+      .rank-trend {
+        font-size: 0.72rem;
+        font-weight: 800;
+        margin-left: 4px;
+      }
+      .rank-trend.up { color: #22c55e; }
+      .rank-trend.down { color: #f87171; }
+      @keyframes podiumPulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.04); }
+      }
+      .podium-item.flash {
+        animation: podiumPulse 300ms ease;
+      }
+      @keyframes pointsFlash {
+        0%, 100% { background: transparent; }
+        50% { background: rgba(251,191,36,0.28); border-radius: 6px; }
+      }
+      .standing-row.flash-points .num:first-of-type {
+        animation: pointsFlash 300ms ease;
       }
       .match-meta {
         display: flex;
@@ -1428,6 +1628,21 @@ class WmTippspielCard extends HTMLElement {
         gap: 12px;
         min-width: min(100%, 920px);
         align-items: stretch;
+        position: relative;
+        padding: 8px 0;
+      }
+      .bracket-svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 0;
+      }
+      .bracket-tree > .bracket-side,
+      .bracket-tree > .bracket-center {
+        position: relative;
+        z-index: 1;
       }
       .bracket-side {
         display: flex;
@@ -1475,6 +1690,14 @@ class WmTippspielCard extends HTMLElement {
         flex-direction: column;
         gap: 6px;
         min-width: 140px;
+        transition: box-shadow 0.2s ease, border-color 0.2s ease;
+      }
+      .bracket-slot.tip-status-saved { border-left: 3px solid #22c55e; }
+      .bracket-slot.tip-status-soon { border-left: 3px solid #eab308; }
+      .bracket-slot.tip-status-locked { border-left: 3px solid #94a3b8; opacity: 0.72; }
+      .bracket-slot.tip-status-exact {
+        box-shadow: 0 0 0 2px #fbbf24;
+        border-color: rgba(251,191,36,0.45);
       }
       .bracket-slot-head {
         display: flex;
@@ -1675,7 +1898,7 @@ class WmTippspielCard extends HTMLElement {
         <span style="font-size:0.82rem">Integration einrichten und Sensor in den Karten-Einstellungen wählen.</span>
       </div>`;
     } else {
-      const { players, matches, standings, tips, results } = this._data();
+      const { players, matches, standings, tips, results, group_tables: groupTables } = this._data();
       const groupMatches = this._groupStageMatches(matches);
       const knockoutMatches = this._knockoutMatches(matches);
       const playerId = this._selectedPlayer;
@@ -1684,10 +1907,12 @@ class WmTippspielCard extends HTMLElement {
       if (!players.length && (this._tab === "tips" || this._tab === "bracket")) this._tab = "players";
       if (this._tab === "bracket" && this._config.show_knockout === false) this._tab = "tips";
 
-      if (this._tab === "standings") body = this._renderStandings(standings);
-      else if (this._tab === "bracket") body = this._renderBracket(knockoutMatches, playerTips, results, playerId, players);
+      if (this._tab === "standings") {
+        this._detectStandingsFlash(standings);
+        body = this._renderStandings(standings);
+      } else if (this._tab === "bracket") body = this._renderBracket(knockoutMatches, playerTips, results, playerId, players);
       else if (this._tab === "players") body = this._renderPlayers(players);
-      else body = this._renderTips(groupMatches, playerTips, results, playerId, players);
+      else body = this._renderTips(groupMatches, playerTips, results, playerId, players, groupTables);
     }
 
     this.shadowRoot.innerHTML = `
@@ -1735,6 +1960,9 @@ class WmTippspielCard extends HTMLElement {
       this.shadowRoot.querySelectorAll("[data-action=save-tip]").forEach((btn) => {
         this._syncTipSaveButton(btn.getAttribute("data-match"));
       });
+    }
+    if (this._tab === "bracket") {
+      requestAnimationFrame(() => this._drawBracketConnectors());
     }
   }
 
@@ -1816,7 +2044,9 @@ class WmTippspielCard extends HTMLElement {
       if (this._state?.attributes) {
         const attrs = { ...this._state.attributes };
         attrs.players = (attrs.players || []).filter((p) => p.id !== playerId);
-        attrs.tips = this._filterTipsForPlayers(attrs.tips || {}, attrs.players);
+        const entities = { ...(attrs.player_entities || {}) };
+        delete entities[playerId];
+        attrs.player_entities = entities;
         attrs.standings = (attrs.standings || []).filter((s) => s.id !== playerId);
         this._state = { ...this._state, attributes: attrs };
         this._stateFingerprintCache = this._stateFingerprint(this._state);
@@ -1829,6 +2059,117 @@ class WmTippspielCard extends HTMLElement {
       console.error("[wm-tippspiel-card] remove_player failed:", err);
       this._showToast(`Entfernen fehlgeschlagen: ${err?.message || err}`, "error");
     }
+  }
+
+  _detectStandingsFlash(standings) {
+    const prev = this._prevStandingsMap || {};
+    const flash = new Set();
+    const podiumFlash = new Set();
+    for (const s of standings) {
+      if (prev[s.id] != null && prev[s.id] !== s.points) flash.add(s.id);
+    }
+    const top3 = standings.slice(0, 3).map((s) => s.id);
+    const prevTop3 = this._prevTop3Ids || [];
+    for (const id of top3) {
+      if (prevTop3.length && !prevTop3.includes(id)) podiumFlash.add(id);
+    }
+    this._prevStandingsMap = Object.fromEntries(standings.map((s) => [s.id, s.points]));
+    this._prevTop3Ids = top3;
+    this._standingsFlashIds = flash;
+    this._podiumFlashIds = podiumFlash;
+    if (flash.size || podiumFlash.size) {
+      clearTimeout(this._flashTimer);
+      this._flashTimer = setTimeout(() => {
+        this._standingsFlashIds = new Set();
+        this._podiumFlashIds = new Set();
+        if (this._tab === "standings") this._renderShell();
+      }, 320);
+    }
+  }
+
+  _renderRankTrend(change) {
+    const n = Number(change) || 0;
+    if (n > 0) return `<span class="rank-trend up" title="Platz verbessert">↑${n}</span>`;
+    if (n < 0) return `<span class="rank-trend down" title="Platz verschlechtert">↓${Math.abs(n)}</span>`;
+    return "";
+  }
+
+  _renderGroupTables(groupTables) {
+    const groups = normalizeGroups(this._config.show_groups).filter((g) => (groupTables[g] || []).length);
+    if (!groups.length) return "";
+    return `<div class="group-tables">${groups
+      .map((g) => {
+        const rows = groupTables[g] || [];
+        const body = rows
+          .map((row, i) => {
+            return `<div class="group-table-row">
+              <span class="pos">${i + 1}</span>
+              <span class="team-cell" title="${escapeHtml(row.team)}">${escapeHtml(row.team)}</span>
+              <span class="num">${row.played}</span>
+              <span class="num">${row.points}</span>
+              <span class="num">${row.gf}</span>
+              <span class="num">${row.gf - row.ga}</span>
+            </div>`;
+          })
+          .join("");
+        return `<div class="group-table">
+          <div class="group-table-head">Gruppe ${g}</div>
+          <div class="group-table-row head"><span>#</span><span>Team</span><span>Sp</span><span>Pkt</span><span>T</span><span>+/-</span></div>
+          ${body}
+        </div>`;
+      })
+      .join("")}</div>`;
+  }
+
+  _buildMatchTipContext(m, playerTips, results, playerId) {
+    const locked = isPastKickoff(m.kickoff, 0);
+    const savedTip = playerTips[m.id] || {};
+    const draftTip = this._getDraftTip(playerId, m.id);
+    const tip = { ...savedTip, ...draftTip };
+    const res = results[m.id];
+    const homeVal = tip.home ?? "";
+    const awayVal = tip.away ?? "";
+    const pts = this._tipPoints(tip.home != null && tip.away != null && tip.home !== "" && tip.away !== "" ? tip : null, res);
+    const status = matchTipStatus(m, tip, res);
+    return { locked, tip, res, homeVal, awayVal, pts, status };
+  }
+
+  _renderMatchExtra(m, ctx, results, { compact = false } = {}) {
+    const { locked, tip, res, homeVal, awayVal, pts, status } = ctx;
+    let extra = "";
+    if (!compact && res) extra += `<span class="badge badge-result">Ergebnis ${res.home}:${res.away}</span>`;
+    if (pts != null && tip.home !== "" && tip.away !== "") {
+      extra += `<span class="badge badge-points">+${pts} Punkte</span>`;
+    }
+    if (!locked) {
+      if (this._autoSaveEnabled()) {
+        const saveStatus = this._tipSaveStatus[m.id] || "";
+        extra += `<span class="badge tip-status${saveStatus ? ` tip-status-${saveStatus}` : ""}" data-match="${m.id}">${
+          saveStatus === "pending"
+            ? "…"
+            : saveStatus === "saving"
+              ? "Speichern…"
+              : saveStatus === "saved"
+                ? compact ? "✓" : "Gespeichert ✓"
+                : saveStatus === "error"
+                  ? "Fehler"
+                  : ""
+        }</span>`;
+      } else if (!compact) {
+        const canSave = this._tipInputsValid(m.id) || (homeVal !== "" && awayVal !== "");
+        extra += `<button type="button" class="btn" data-action="save-tip" data-match="${m.id}"${canSave ? "" : " disabled"}>Tipp speichern</button>`;
+      }
+    } else if (!compact) {
+      extra += `<span class="badge badge-locked">🔒 Tippabgabe geschlossen</span>`;
+    }
+    if (this._isAdmin()) {
+      extra += this._renderAdminResultControls(m, results);
+    }
+    if (compact) {
+      const label = tipStatusLabel(status);
+      if (label) extra += `<span class="match-status-badge status-${status}">${label}</span>`;
+    }
+    return extra;
   }
 
   _renderStandings(standings) {
@@ -1846,10 +2187,12 @@ class WmTippspielCard extends HTMLElement {
       { player: top3[0], cls: "first", medal: "🥇" },
       { player: top3[2], cls: "third", medal: "🥉" },
     ].filter((slot) => slot.player);
+    const podiumFlash = this._podiumFlashIds || new Set();
     const podium = podiumSlots.length
       ? `<div class="podium">${podiumSlots
           .map(({ player: s, cls, medal }) => {
-            return `<div class="podium-item ${cls}">
+            const flash = podiumFlash.has(s.id) ? " flash" : "";
+            return `<div class="podium-item ${cls}${flash}">
               <div class="podium-rank">${medal}</div>
               <div class="podium-name">${escapeHtml(s.name)}</div>
               <div class="podium-pts">${s.points} Pkt.</div>
@@ -1858,12 +2201,14 @@ class WmTippspielCard extends HTMLElement {
           .join("")}</div>`
       : "";
 
+    const flashIds = this._standingsFlashIds || new Set();
     const rows = standings
       .map((s, i) => {
         const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : s.rank;
-        return `<div class="standing-row">
+        const flash = flashIds.has(s.id) ? " flash-points" : "";
+        return `<div class="standing-row${flash}">
           <div class="rank-num">${medal}</div>
-          <div>${escapeHtml(s.name)}</div>
+          <div>${escapeHtml(s.name)}${this._renderRankTrend(s.rank_change)}</div>
           <div class="num">${s.points}</div>
           <div class="num">${s.exact}</div>
           <div class="num">${s.tendency}</div>
@@ -1877,8 +2222,23 @@ class WmTippspielCard extends HTMLElement {
       </div>${rows}`;
   }
 
-  _renderMatchTeams(m, scoreHtml, extra = "") {
-    return `<div class="match">
+  _renderMatchTeams(m, scoreHtml, extra = "", status = "pending", compact = false) {
+    const statusClass = status ? ` tip-status-${status}` : "";
+    if (compact) {
+      return `<div class="match compact${statusClass}" data-match-id="${m.id}">
+        <div class="match-row-compact">
+          <div class="teams-inline">
+            ${teamFlag(m.home)}
+            <span>${escapeHtml(m.home)}</span>
+            <div class="score-box">${scoreHtml}</div>
+            <span>${escapeHtml(m.away)}</span>
+            ${teamFlag(m.away)}
+          </div>
+          ${extra}
+        </div>
+      </div>`;
+    }
+    return `<div class="match${statusClass}" data-match-id="${m.id}">
       <div class="match-meta">
         <span>${formatKickoff(m.kickoff)}</span>
         <span>${escapeHtml(m.venue || m.stage || "")}</span>
@@ -1899,14 +2259,8 @@ class WmTippspielCard extends HTMLElement {
   }
 
   _renderBracketMatchSlot(m, playerTips, results, playerId, options = {}) {
-    const locked = isPastKickoff(m.kickoff) && !this._isAdmin();
-    const savedTip = playerTips[m.id] || {};
-    const draftTip = this._getDraftTip(playerId, m.id);
-    const tip = { ...savedTip, ...draftTip };
-    const res = results[m.id];
-    const homeVal = tip.home ?? "";
-    const awayVal = tip.away ?? "";
-    const pts = this._tipPoints(tip.home != null && tip.away != null ? tip : null, res);
+    const ctx = this._buildMatchTipContext(m, playerTips, results, playerId);
+    const { locked, homeVal, awayVal, pts, tip, res, status } = ctx;
     const centerClass = options.center ? " center-final" : "";
 
     const homeScore = locked
@@ -1923,16 +2277,16 @@ class WmTippspielCard extends HTMLElement {
     }
     if (!locked) {
       if (this._autoSaveEnabled()) {
-        const status = this._tipSaveStatus[m.id] || "";
-        if (status) {
-          footer += `<span class="badge tip-status tip-status-${status}" data-match="${m.id}">${
-            status === "pending"
+        const saveStatus = this._tipSaveStatus[m.id] || "";
+        if (saveStatus) {
+          footer += `<span class="badge tip-status tip-status-${saveStatus}" data-match="${m.id}">${
+            saveStatus === "pending"
               ? "…"
-              : status === "saving"
+              : saveStatus === "saving"
                 ? "Speichern…"
-                : status === "saved"
+                : saveStatus === "saved"
                   ? "✓"
-                  : status === "error"
+                  : saveStatus === "error"
                     ? "!"
                     : ""
           }</span>`;
@@ -1948,7 +2302,7 @@ class WmTippspielCard extends HTMLElement {
     let admin = "";
     if (this._isAdmin()) admin = this._renderAdminResultControls(m, results);
 
-    return `<div class="bracket-slot${centerClass}" data-match-id="${m.id}">
+    return `<div class="bracket-slot tip-status-${status}${centerClass}" data-match-id="${m.id}" data-bracket-slot="1">
       <div class="bracket-slot-head">
         <span class="bracket-id">${escapeHtml(m.id)}</span>
         <span>${escapeHtml(m.stage || "")}</span>
@@ -2058,9 +2412,72 @@ class WmTippspielCard extends HTMLElement {
     </div>`;
 
     return `${adminBar}<div class="bracket-scroll">
-      <div class="bracket-tree">${leftSide}${center}${rightSide}</div>
+      <div class="bracket-tree">
+        <svg class="bracket-svg" aria-hidden="true"><path class="bracket-line" fill="none" stroke="rgba(255,255,255,0.22)" stroke-width="2"></path></svg>
+        ${leftSide}${center}${rightSide}
+      </div>
       ${this._renderBracketMobile(mobileRounds, playerTips, results, playerId)}
     </div>`;
+  }
+
+  _drawBracketConnectors() {
+    if (this._tab !== "bracket") return;
+    const tree = this.shadowRoot?.querySelector(".bracket-tree");
+    const path = tree?.querySelector(".bracket-line");
+    if (!tree || !path) return;
+    const treeRect = tree.getBoundingClientRect();
+    if (!treeRect.width || !treeRect.height) return;
+    const slots = [...tree.querySelectorAll("[data-bracket-slot]")];
+    if (slots.length < 2) {
+      path.setAttribute("d", "");
+      return;
+    }
+    const centerX = treeRect.width / 2;
+    const segments = [];
+    const leftSlots = slots.filter((el) => {
+      const r = el.getBoundingClientRect();
+      return r.left + r.width / 2 < centerX + treeRect.left - 20;
+    });
+    const rightSlots = slots.filter((el) => {
+      const r = el.getBoundingClientRect();
+      return r.left + r.width / 2 > centerX + treeRect.left + 20;
+    });
+    const toLocal = (el) => {
+      const r = el.getBoundingClientRect();
+      return {
+        x: r.left + r.width - treeRect.left,
+        y: r.top + r.height / 2 - treeRect.top,
+        xL: r.left - treeRect.left,
+        yC: r.top + r.height / 2 - treeRect.top,
+      };
+    };
+    for (let i = 0; i < leftSlots.length; i += 2) {
+      const a = leftSlots[i];
+      const b = leftSlots[i + 1];
+      if (!a || !b) continue;
+      const pa = toLocal(a);
+      const pb = toLocal(b);
+      const midY = (pa.y + pb.y) / 2;
+      const stub = 14;
+      segments.push(`M ${pa.x} ${pa.y} H ${pa.x + stub}`);
+      segments.push(`M ${pb.x} ${pb.y} H ${pb.x + stub}`);
+      segments.push(`M ${pa.x + stub} ${pa.y} V ${pb.y}`);
+      segments.push(`M ${pa.x + stub} ${midY} H ${centerX - 8}`);
+    }
+    for (let i = 0; i < rightSlots.length; i += 2) {
+      const a = rightSlots[i];
+      const b = rightSlots[i + 1];
+      if (!a || !b) continue;
+      const pa = toLocal(a);
+      const pb = toLocal(b);
+      const midY = (pa.y + pb.y) / 2;
+      const stub = 14;
+      segments.push(`M ${pa.xL} ${pa.yC} H ${pa.xL - stub}`);
+      segments.push(`M ${pb.xL} ${pb.yC} H ${pb.xL - stub}`);
+      segments.push(`M ${pa.xL - stub} ${pa.yC} V ${pb.yC}`);
+      segments.push(`M ${pa.xL - stub} ${midY} H ${centerX + 8}`);
+    }
+    path.setAttribute("d", segments.join(" "));
   }
 
   _tipPoints(tip, result) {
@@ -2070,7 +2487,7 @@ class WmTippspielCard extends HTMLElement {
     return tend(tip.home, tip.away) === tend(result.home, result.away) ? 1 : 0;
   }
 
-  _renderTips(matches, playerTips, results, playerId, players) {
+  _renderTips(matches, playerTips, results, playerId, players, groupTables = {}) {
     if (!players.length) {
       return `<div class="empty">
         <div class="empty-icon">👥</div>
@@ -2086,15 +2503,13 @@ class WmTippspielCard extends HTMLElement {
       return `<div class="empty"><div class="empty-icon">⚽</div><h3>Keine Spiele</h3><p>Gruppenfilter in den Einstellungen anpassen.</p></div>`;
     }
 
-    return this._renderMatchAccordions(matches, (m) => {
-      const locked = isPastKickoff(m.kickoff) && !this._isAdmin();
-      const savedTip = playerTips[m.id] || {};
-      const draftTip = this._getDraftTip(playerId, m.id);
-      const tip = { ...savedTip, ...draftTip };
-      const res = results[m.id];
-      const homeVal = tip.home ?? "";
-      const awayVal = tip.away ?? "";
-      const pts = this._tipPoints(tip.home != null && tip.away != null ? tip : null, res);
+    const compact = this._config.compact_mode !== false;
+    const tablesHtml =
+      this._config.show_group_tables !== false ? this._renderGroupTables(groupTables) : "";
+
+    const accordions = this._renderMatchAccordions(matches, (m) => {
+      const ctx = this._buildMatchTipContext(m, playerTips, results, playerId);
+      const { locked, homeVal, awayVal, status } = ctx;
 
       const scoreHtml = locked
         ? `<span class="score-static">${homeVal !== "" ? homeVal : "–"}</span><span class="sep">:</span><span class="score-static">${awayVal !== "" ? awayVal : "–"}</span>`
@@ -2102,39 +2517,11 @@ class WmTippspielCard extends HTMLElement {
            <span class="sep">:</span>
            <input class="score-input" type="number" min="0" max="20" inputmode="numeric" data-match="${m.id}" data-side="away" data-kind="tip" value="${awayVal}" />`;
 
-      let extra = "";
-      if (res) extra += `<span class="badge badge-result">Ergebnis ${res.home}:${res.away}</span>`;
-      if (pts != null && tip.home !== "" && tip.away !== "") {
-        extra += `<span class="badge badge-points">+${pts} Punkte</span>`;
-      }
-      if (!locked) {
-        if (this._autoSaveEnabled()) {
-          const status = this._tipSaveStatus[m.id] || "";
-          extra += `<span class="badge tip-status${status ? ` tip-status-${status}` : ""}" data-match="${m.id}">${
-            status === "pending"
-              ? "…"
-              : status === "saving"
-                ? "Speichern…"
-                : status === "saved"
-                  ? "Gespeichert ✓"
-                  : status === "error"
-                    ? "Fehler"
-                    : ""
-          }</span>`;
-        } else {
-          const canSave = this._tipInputsValid(m.id) || (homeVal !== "" && awayVal !== "");
-          extra += `<button type="button" class="btn" data-action="save-tip" data-match="${m.id}"${canSave ? "" : " disabled"}>Tipp speichern</button>`;
-        }
-      } else if (locked) {
-        extra += `<span class="badge badge-locked">🔒 Tippabgabe geschlossen</span>`;
-      }
-
-      if (this._isAdmin()) {
-        extra += this._renderAdminResultControls(m, results);
-      }
-
-      return this._renderMatchTeams(m, scoreHtml, extra);
+      const extra = this._renderMatchExtra(m, ctx, results, { compact });
+      return this._renderMatchTeams(m, scoreHtml, extra, status, compact);
     });
+
+    return `${tablesHtml}${accordions}`;
   }
 
   async _saveTip(matchId, options = {}) {
@@ -2145,6 +2532,12 @@ class WmTippspielCard extends HTMLElement {
       return;
     }
     if (!matchId) return;
+
+    const match = (this._state?.attributes?.matches || []).find((m) => m.id === matchId);
+    if (match && isPastKickoff(match.kickoff, 0)) {
+      if (!silent) this._showToast("Tippabgabe geschlossen – Anpfiff bereits erfolgt.", "error");
+      return;
+    }
 
     clearTimeout(this._autoSaveTimers[matchId]);
     delete this._autoSaveTimers[matchId];

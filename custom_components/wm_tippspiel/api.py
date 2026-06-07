@@ -72,6 +72,29 @@ class ApiFootballClient:
         return response_list
 
     @staticmethod
+    def parse_schedule_updates(
+        fixtures: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Extrahiert Anstoßzeiten und Teams für den Spielplan."""
+        updates: list[dict[str, Any]] = []
+        for item in fixtures:
+            if not isinstance(item, dict):
+                continue
+            fixture = item.get("fixture") or {}
+            teams = item.get("teams") or {}
+            home_team = teams.get("home") or {}
+            away_team = teams.get("away") or {}
+            updates.append(
+                {
+                    "home_id": home_team.get("id"),
+                    "away_id": away_team.get("id"),
+                    "kickoff": fixture.get("date"),
+                    "status": (fixture.get("status") or {}).get("short"),
+                }
+            )
+        return updates
+
+    @staticmethod
     def parse_finished_results(
         fixtures: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:

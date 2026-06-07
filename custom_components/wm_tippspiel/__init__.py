@@ -10,6 +10,7 @@ from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
@@ -108,12 +109,15 @@ def _register_services(hass: HomeAssistant) -> None:
 
     async def _set_tip(call: ServiceCall) -> None:
         store = get_store(hass, call.data.get("entry_id"))
-        store.set_tip(
-            call.data[ATTR_PLAYER_ID],
-            call.data[ATTR_MATCH_ID],
-            call.data[ATTR_HOME],
-            call.data[ATTR_AWAY],
-        )
+        try:
+            store.set_tip(
+                call.data[ATTR_PLAYER_ID],
+                call.data[ATTR_MATCH_ID],
+                call.data[ATTR_HOME],
+                call.data[ATTR_AWAY],
+            )
+        except ValueError as err:
+            raise HomeAssistantError(str(err)) from err
         await store.async_save()
         _async_notify(hass)
 

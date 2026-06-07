@@ -7,6 +7,7 @@ from typing import Any
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -15,7 +16,6 @@ from .const import (
     ATTR_PLAYERS,
     ATTR_RESULTS,
     ATTR_STANDINGS,
-    ATTR_TIPS,
     DOMAIN,
 )
 from .coordinator import WmTippspielCoordinator
@@ -121,20 +121,34 @@ class WmTippspielLeaderboardSensor(WmTippspielBaseSensor):
             "entry_id": self._entry.entry_id,
             ATTR_STANDINGS: self._store.compute_standings(),
             ATTR_PLAYERS: self._store.get_players(),
-            ATTR_MATCHES: self._store.get_matches(),
-            ATTR_TIPS: self._store.data.get("tips", {}),
+            ATTR_MATCHES: self._store.get_matches_for_card(),
             ATTR_RESULTS: self._store.data.get("results", {}),
             "group_tables": self._store.get_group_tables(),
+            "player_entities": self._player_entities(),
         }
         if self._coordinator.data:
             attrs["api_sync"] = {
                 "enabled": self._coordinator.data.get("api_enabled"),
                 "last_sync": self._coordinator.data.get("last_sync"),
                 "updated_matches": self._coordinator.data.get("updated_matches"),
+                "schedule_updates": self._coordinator.data.get("schedule_updates"),
                 "finished_count": self._coordinator.data.get("finished_count"),
                 "error": self._coordinator.data.get("error"),
             }
         return attrs
+
+    def _player_entities(self) -> dict[str, str]:
+        registry = er.async_get(self.hass)
+        mapping: dict[str, str] = {}
+        for player in self._store.get_players():
+            player_id = player.get("id")
+            if not player_id:
+                continue
+            unique_id = f"{self._entry.entry_id}_player_{player_id}"
+            entity_id = registry.async_get_entity_id("sensor", DOMAIN, unique_id)
+            if entity_id:
+                mapping[str(player_id)] = entity_id
+        return mapping
 
 
 class WmTippspielPlayerSensor(WmTippspielBaseSensor):
