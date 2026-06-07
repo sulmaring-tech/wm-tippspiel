@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.3.10";
+const WM_TIPPSPIEL_CARD_VERSION = "1.3.11";
 
 const ALL_GROUPS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 const KNOCKOUT_ROUNDS = [
@@ -442,6 +442,7 @@ class WmTippspielCard extends HTMLElement {
     this._openAccordions = this._openAccordions || new Set();
     this._autoSaveTimers = this._autoSaveTimers || {};
     this._tipSaveStatus = this._tipSaveStatus || {};
+    this._pendingRemovePlayerId = this._pendingRemovePlayerId || null;
     if (!this.shadowRoot) {
       this.attachShadow({ mode: "open" });
       this._bindEvents();
@@ -460,9 +461,39 @@ class WmTippspielCard extends HTMLElement {
         this._renderShell();
         return;
       }
-      const playerBtn = ev.target.closest("[data-player]");
+      const removePlayer = ev.target.closest("[data-action=remove-player]");
+      if (removePlayer) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        this._pendingRemovePlayerId = removePlayer.getAttribute("data-player-id");
+        this._renderShell();
+        return;
+      }
+      const confirmRemove = ev.target.closest("[data-action=confirm-remove-player]");
+      if (confirmRemove) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        void this._removePlayer(confirmRemove.getAttribute("data-player-id"));
+        return;
+      }
+      const cancelRemove = ev.target.closest("[data-action=cancel-remove-player]");
+      if (cancelRemove) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        this._pendingRemovePlayerId = null;
+        this._renderShell();
+        return;
+      }
+      const selectRow = ev.target.closest("[data-action=select-player-row]");
+      if (selectRow) {
+        this._selectedPlayer = selectRow.getAttribute("data-player-id");
+        this._tab = "tips";
+        this._renderShell();
+        return;
+      }
+      const playerBtn = ev.target.closest(".player-chip[data-player-id]");
       if (playerBtn) {
-        this._selectedPlayer = playerBtn.getAttribute("data-player");
+        this._selectedPlayer = playerBtn.getAttribute("data-player-id");
         this._renderShell();
         return;
       }
@@ -482,20 +513,6 @@ class WmTippspielCard extends HTMLElement {
       if (addPlayer) {
         ev.preventDefault();
         this._addPlayerFromCard();
-        return;
-      }
-      const selectRow = ev.target.closest("[data-action=select-player-row]");
-      if (selectRow) {
-        this._selectedPlayer = selectRow.getAttribute("data-player");
-        this._tab = "tips";
-        this._renderShell();
-        return;
-      }
-      const removePlayer = ev.target.closest("[data-action=remove-player]");
-      if (removePlayer) {
-        ev.preventDefault();
-        ev.stopPropagation();
-        void this._removePlayer(removePlayer.getAttribute("data-player"));
         return;
       }
     });
@@ -1332,7 +1349,11 @@ class WmTippspielCard extends HTMLElement {
       }
       .player-row-name { font-weight: 700; font-size: 0.92rem; }
       .player-row-id { font-size: 0.68rem; opacity: 0.5; }
-      .player-row-actions { display: flex; gap: 6px; }
+      .player-row-confirm {
+        border-color: rgba(248,113,113,0.35);
+        background: rgba(248,113,113,0.08);
+      }
+      .player-row-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
       .btn-icon {
         border: 1px solid rgba(255,255,255,0.12);
         background: rgba(255,255,255,0.06);
@@ -1410,7 +1431,7 @@ class WmTippspielCard extends HTMLElement {
                 ? `<div class="player-bar">${this._data()
                     .players.map(
                       (p) =>
-                        `<button type="button" class="player-chip ${p.id === this._selectedPlayer ? "active" : ""}" data-player="${escapeHtml(p.id)}">${escapeHtml(p.name)}</button>`
+                        `<button type="button" class="player-chip ${p.id === this._selectedPlayer ? "active" : ""}" data-player-id="${escapeHtml(p.id)}">${escapeHtml(p.name)}</button>`
                     )
                     .join("")}</div>`
                 : ""
@@ -1440,22 +1461,34 @@ class WmTippspielCard extends HTMLElement {
   }
 
   _renderPlayers(players) {
+    const pendingId = this._pendingRemovePlayerId;
     const list =
       players.length > 0
         ? `<div class="player-list">${players
-            .map(
-              (p) =>
-                `<div class="player-row">
+            .map((p) => {
+              if (pendingId === p.id) {
+                return `<div class="player-row player-row-confirm">
+                  <div>
+                    <div class="player-row-name">${escapeHtml(p.name)} wirklich entfernen?</div>
+                    <div class="player-row-id">Alle Tipps dieses Spielers werden gelöscht.</div>
+                  </div>
+                  <div class="player-row-actions">
+                    <button type="button" class="btn-icon danger" data-action="confirm-remove-player" data-player-id="${escapeHtml(p.id)}">Ja, löschen</button>
+                    <button type="button" class="btn-icon" data-action="cancel-remove-player">Abbrechen</button>
+                  </div>
+                </div>`;
+              }
+              return `<div class="player-row">
                   <div>
                     <div class="player-row-name">${escapeHtml(p.name)}</div>
                     <div class="player-row-id">ID: ${escapeHtml(p.id)}</div>
                   </div>
                   <div class="player-row-actions">
-                    <button type="button" class="btn-icon" data-action="select-player-row" data-player="${escapeHtml(p.id)}">Tippen</button>
-                    ${this._isAdmin() ? `<button type="button" class="btn-icon danger" data-action="remove-player" data-player="${escapeHtml(p.id)}">Entfernen</button>` : ""}
+                    <button type="button" class="btn-icon" data-action="select-player-row" data-player-id="${escapeHtml(p.id)}">Tippen</button>
+                    ${this._isAdmin() ? `<button type="button" class="btn-icon danger" data-action="remove-player" data-player-id="${escapeHtml(p.id)}">Entfernen</button>` : ""}
                   </div>
-                </div>`
-            )
+                </div>`;
+            })
             .join("")}</div>`
         : `<div class="empty" style="margin-bottom:14px">
             <div class="empty-icon">👥</div>
@@ -1496,12 +1529,10 @@ class WmTippspielCard extends HTMLElement {
     const players = this._data().players || [];
     const player = players.find((p) => p.id === playerId);
     const name = player?.name || "Spieler";
-    if (!window.confirm(`${name} wirklich entfernen? Alle Tipps dieses Spielers werden gelöscht.`)) {
-      return;
-    }
 
     try {
       await this._callService("remove_player", { player_id: playerId });
+      this._pendingRemovePlayerId = null;
       if (this._selectedPlayer === playerId) this._selectedPlayer = null;
       if (this._state?.attributes) {
         const attrs = { ...this._state.attributes };
