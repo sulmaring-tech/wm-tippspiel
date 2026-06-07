@@ -11,6 +11,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.typing import ConfigType
 
 from .const import (
     ATTR_AWAY,
@@ -33,16 +34,27 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS: list[Platform] = [Platform.SENSOR]
 _WWW_DIR = Path(__file__).parent / "www"
 
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Stellt die Lovelace-Karte bereit, sobald die Integration geladen ist."""
+    await _register_www(hass)
+    hass.data.setdefault(DOMAIN, {})
+    return True
+
 
 async def _register_www(hass: HomeAssistant) -> None:
     if hass.data.get(DOMAIN, {}).get("_www_registered"):
         return
     if not _WWW_DIR.is_dir():
+        _LOGGER.error("WM Tippspiel: www-Ordner nicht gefunden (%s)", _WWW_DIR)
         return
     await hass.http.async_register_static_paths(
         [StaticPathConfig("/wm_tippspiel", str(_WWW_DIR), False)]
     )
     hass.data.setdefault(DOMAIN, {})["_www_registered"] = True
+    _LOGGER.debug("WM Tippspiel: Karte unter /wm_tippspiel/ registriert")
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

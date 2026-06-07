@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.0.0";
+const WM_TIPPSPIEL_CARD_VERSION = "1.0.1";
 
 const TABS = [
   { id: "tips", label: "Tippen", icon: "mdi:soccer-field" },

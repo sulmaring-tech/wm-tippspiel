@@ -2,6 +2,6 @@
   "name": "WM Tippspiel",
   "render_readme": true,
   "homeassistant": "2024.4.0",
-  "domains": ["sensor"],
+  "domains": ["wm_tippspiel"],
   "country": ["DE"]
 }

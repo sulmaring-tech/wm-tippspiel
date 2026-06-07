@@ -15,10 +15,12 @@ Tippspiel für die **Fußball-WM 2026** als Home-Assistant-Integration mit Lovel
 
 ### HACS (empfohlen)
 
-1. Repository als Custom Repository hinzufügen
-2. **WM Tippspiel** installieren
-3. Home Assistant neu starten
-4. Unter **Einstellungen → Geräte & Dienste → Integration hinzufügen** → **WM Tippspiel** einrichten
+1. Repository als Custom Repository hinzufügen (Kategorie: **Integration**)
+2. URL: `https://github.com/sulmaring-tech/wm-tippspiel`
+3. **WM Tippspiel** installieren
+4. Home Assistant **neu starten**
+5. Unter **Einstellungen → Geräte & Dienste → Integration hinzufügen** → **WM Tippspiel** einrichten
+6. Erst danach die Lovelace-Ressource hinzufügen (siehe unten)
 
 ### Manuell
 
@@ -31,9 +33,20 @@ Tippspiel für die **Fußball-WM 2026** als Home-Assistant-Integration mit Lovel
 Ressource registrieren (Einstellungen → Dashboards → Ressourcen):
 
 ```yaml
-url: /wm_tippspiel/wm-tippspiel-card.js
+url: /wm_tippspiel/wm-tippspiel-card.js?v=1.0.1
 type: module
 ```
+
+**Wichtig:** Die Ressource funktioniert erst, wenn die Integration eingerichtet ist und Home Assistant danach neu gestartet wurde.
+
+### Fehler „Custom element not found: wm-tippspiel-card“
+
+1. **Integration eingerichtet?** Unter *Geräte & Dienste* muss „WM Tippspiel“ erscheinen.
+2. **URL testen:** Im Browser öffnen: `http://DEINE-HA-IP:8123/wm_tippspiel/wm-tippspiel-card.js`  
+   - Seite zeigt JavaScript-Code → Ressource ist OK  
+   - **404 / leer** → Integration fehlt oder HA nicht neu gestartet
+3. **Ressource neu laden:** Dashboard-Ressource löschen, mit `?v=1.0.1` neu anlegen, Browser-Cache leeren (Strg+F5).
+4. **Alternative (sofort):** Datei `wm-tippspiel-card.js` nach `config/www/` kopieren und als Ressource `/local/wm-tippspiel-card.js` eintragen.
 
 Beispiel-Karte:
 
