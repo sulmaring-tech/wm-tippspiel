@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.5.0";
+const WM_TIPPSPIEL_CARD_VERSION = "1.5.1";
 
 const ALL_GROUPS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 const KNOCKOUT_ROUNDS = [
@@ -14,8 +14,8 @@ const DEFAULT_ACCENT_2 = "#22c55e";
 const FLAG_CDN = "https://flagcdn.com/w40";
 
 const TABS = [
-  { id: "tips", label: "Tippen", icon: "mdi:soccer" },
-  { id: "bracket", label: "Turnierbaum", icon: "mdi:tournament", knockout: true },
+  { id: "tips", label: "Vorrunde", icon: "mdi:soccer" },
+  { id: "bracket", label: "KO-Runde", icon: "mdi:tournament", knockout: true },
   { id: "standings", label: "Rangliste", icon: "mdi:podium-gold" },
   { id: "players", label: "Spieler", icon: "mdi:account-group" },
 ];
@@ -332,7 +332,7 @@ class WmTippspielCardEditor extends HTMLElement {
                 </label>`
             ).join("")}
           </div>
-          <ha-formfield label="K.o.-Runden im Turnierbaum (Sechzehntelfinale bis Finale)">
+          <ha-formfield label="KO-Runde anzeigen (Sechzehntelfinale bis Finale)">
             <ha-switch data-key="show_knockout"></ha-switch>
           </ha-formfield>
           <ha-formfield label="Tipps automatisch speichern">
