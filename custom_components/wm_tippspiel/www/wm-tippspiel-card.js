@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.2.1";
+const WM_TIPPSPIEL_CARD_VERSION = "1.2.2";
 
 const ALL_GROUPS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 const DEFAULT_ACCENT = "#fbbf24";
@@ -359,21 +359,143 @@ class WmTippspielCard extends HTMLElement {
     this._newPlayerName = this._newPlayerName || "";
     if (!this.shadowRoot) {
       this.attachShadow({ mode: "open" });
+      this._bindEvents();
     }
     this._renderShell();
+  }
+
+  _bindEvents() {
+    if (this._eventsBound) return;
+    this._eventsBound = true;
+
+    this.shadowRoot.addEventListener("click", (ev) => {
+      const tabBtn = ev.target.closest("[data-tab]");
+      if (tabBtn) {
+        this._tab = tabBtn.getAttribute("data-tab");
+        this._renderShell();
+        return;
+      }
+      const playerBtn = ev.target.closest("[data-player]");
+      if (playerBtn) {
+        this._selectedPlayer = playerBtn.getAttribute("data-player");
+        this._renderShell();
+        return;
+      }
+      const saveTip = ev.target.closest("[data-action=save-tip]");
+      if (saveTip) {
+        ev.preventDefault();
+        this._saveTip(saveTip);
+        return;
+      }
+      const saveResult = ev.target.closest("[data-action=save-result]");
+      if (saveResult) {
+        ev.preventDefault();
+        this._saveResult(saveResult);
+        return;
+      }
+      const addPlayer = ev.target.closest("[data-action=add-player-card]");
+      if (addPlayer) {
+        ev.preventDefault();
+        this._addPlayerFromCard();
+        return;
+      }
+      const selectRow = ev.target.closest("[data-action=select-player-row]");
+      if (selectRow) {
+        this._selectedPlayer = selectRow.getAttribute("data-player");
+        this._tab = "tips";
+        this._renderShell();
+        return;
+      }
+      const removePlayer = ev.target.closest("[data-action=remove-player]");
+      if (removePlayer) {
+        this._removePlayer(removePlayer.getAttribute("data-player"));
+      }
+    });
+
+    this.shadowRoot.addEventListener("input", (ev) => {
+      const addInput = ev.target.closest(".add-player-input");
+      if (addInput) {
+        this._newPlayerName = addInput.value;
+        return;
+      }
+      const input = ev.target.closest(".score-input");
+      if (!input) return;
+      const matchId = input.getAttribute("data-match");
+      const side = input.getAttribute("data-side");
+      const kind = input.getAttribute("data-kind") || "tip";
+      const bucket = kind === "result" ? this._draftResults : this._draftTips;
+      bucket[matchId] = bucket[matchId] || {};
+      bucket[matchId][side] = input.value;
+      if (kind === "tip") this._syncTipSaveButton(matchId);
+    });
+
+    this.shadowRoot.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Enter") return;
+      const input = ev.target.closest(".add-player-input");
+      if (input) this._addPlayerFromCard();
+    });
+  }
+
+  _stateFingerprint(state) {
+    if (!state) return "";
+    return `${state.last_updated}|${JSON.stringify(state.attributes)}`;
+  }
+
+  _tipInputsValid(matchId) {
+    const homeIn = this.shadowRoot?.querySelector(
+      `.score-input[data-match="${matchId}"][data-side="home"][data-kind="tip"]`
+    );
+    const awayIn = this.shadowRoot?.querySelector(
+      `.score-input[data-match="${matchId}"][data-side="away"][data-kind="tip"]`
+    );
+    if (homeIn && awayIn) {
+      return homeIn.value !== "" && awayIn.value !== "" && !Number.isNaN(Number(homeIn.value)) && !Number.isNaN(Number(awayIn.value));
+    }
+    const draft = this._draftTips[matchId] || {};
+    return draft.home !== "" && draft.home != null && draft.away !== "" && draft.away != null;
+  }
+
+  _syncTipSaveButton(matchId) {
+    const btn = this.shadowRoot?.querySelector(`[data-action=save-tip][data-match="${matchId}"]`);
+    if (btn) btn.disabled = !this._tipInputsValid(matchId);
+  }
+
+  _showToast(message, type = "info") {
+    const root = this.shadowRoot;
+    if (!root) return;
+    let toast = root.querySelector(".wm-toast");
+    if (!toast) {
+      toast = document.createElement("div");
+      toast.className = "wm-toast";
+      root.querySelector(".card-wrap")?.appendChild(toast);
+    }
+    toast.className = `wm-toast ${type}`;
+    toast.textContent = message;
+    toast.classList.add("visible");
+    clearTimeout(this._toastTimer);
+    this._toastTimer = setTimeout(() => toast.classList.remove("visible"), 2800);
   }
 
   set hass(hass) {
     this._hass = hass;
     const state = hass.states[this._config.entity];
     if (!state) {
-      this._state = null;
-      this._renderShell();
+      if (this._state !== null) {
+        this._state = null;
+        this._stateFingerprintCache = "";
+        this._renderShell();
+      }
       return;
     }
+    const fp = this._stateFingerprint(state);
+    const changed = fp !== this._stateFingerprintCache;
+    this._stateFingerprintCache = fp;
     this._state = state;
     this._ensurePlayer();
-    this._renderShell();
+    if (changed || !this._shellReady) {
+      this._renderShell();
+      this._shellReady = true;
+    }
   }
 
   getCardSize() {
@@ -645,6 +767,27 @@ class WmTippspielCard extends HTMLElement {
       }
       .btn:hover { transform: translateY(-1px); }
       .btn:disabled { opacity: 0.45; cursor: default; transform: none; }
+      .wm-toast {
+        position: absolute;
+        left: 50%;
+        bottom: 52px;
+        transform: translateX(-50%) translateY(8px);
+        padding: 10px 16px;
+        border-radius: 12px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s, transform 0.2s;
+        z-index: 10;
+        white-space: nowrap;
+        background: rgba(0,0,0,0.85);
+        color: #fff;
+        border: 1px solid rgba(255,255,255,0.12);
+      }
+      .wm-toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+      .wm-toast.success { border-color: rgba(34,197,94,0.5); color: #86efac; }
+      .wm-toast.error { border-color: rgba(248,113,113,0.5); color: #fca5a5; }
       .btn-secondary {
         background: rgba(255,255,255,0.08);
         color: inherit;
@@ -905,62 +1048,11 @@ class WmTippspielCard extends HTMLElement {
       </ha-card>
     `;
 
-    this.shadowRoot.querySelectorAll("[data-tab]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        this._tab = btn.getAttribute("data-tab");
-        this._renderShell();
+    if (this._tab === "tips") {
+      this.shadowRoot.querySelectorAll("[data-action=save-tip]").forEach((btn) => {
+        this._syncTipSaveButton(btn.getAttribute("data-match"));
       });
-    });
-
-    this.shadowRoot.querySelectorAll("[data-player]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        this._selectedPlayer = btn.getAttribute("data-player");
-        this._renderShell();
-      });
-    });
-
-    this.shadowRoot.querySelectorAll("[data-action=save-tip]").forEach((btn) => {
-      btn.addEventListener("click", () => this._saveTip(btn));
-    });
-
-    this.shadowRoot.querySelectorAll("[data-action=save-result]").forEach((btn) => {
-      btn.addEventListener("click", () => this._saveResult(btn));
-    });
-
-    this.shadowRoot.querySelectorAll(".score-input").forEach((input) => {
-      input.addEventListener("input", (ev) => {
-        const matchId = ev.target.getAttribute("data-match");
-        const side = ev.target.getAttribute("data-side");
-        const kind = ev.target.getAttribute("data-kind") || "tip";
-        const bucket = kind === "result" ? this._draftResults : this._draftTips;
-        bucket[matchId] = bucket[matchId] || {};
-        bucket[matchId][side] = ev.target.value;
-      });
-    });
-
-    this.shadowRoot.querySelector("[data-action=add-player-card]")?.addEventListener("click", () =>
-      this._addPlayerFromCard()
-    );
-
-    this.shadowRoot.querySelector(".add-player-input")?.addEventListener("keydown", (ev) => {
-      if (ev.key === "Enter") this._addPlayerFromCard();
-    });
-
-    this.shadowRoot.querySelector(".add-player-input")?.addEventListener("input", (ev) => {
-      this._newPlayerName = ev.target.value;
-    });
-
-    this.shadowRoot.querySelectorAll("[data-action=select-player-row]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        this._selectedPlayer = btn.getAttribute("data-player");
-        this._tab = "tips";
-        this._renderShell();
-      });
-    });
-
-    this.shadowRoot.querySelectorAll("[data-action=remove-player]").forEach((btn) => {
-      btn.addEventListener("click", () => this._removePlayer(btn.getAttribute("data-player")));
-    });
+    }
   }
 
   _renderPlayers(players) {
@@ -1145,8 +1237,9 @@ class WmTippspielCard extends HTMLElement {
       if (pts != null && tip.home !== "" && tip.away !== "") {
         extra += `<span class="badge badge-points">+${pts} Punkte</span>`;
       }
-      if (!locked && homeVal !== "" && awayVal !== "") {
-        extra += `<button type="button" class="btn" data-action="save-tip" data-match="${m.id}">Tipp speichern</button>`;
+      if (!locked) {
+        const canSave = this._tipInputsValid(m.id) || (homeVal !== "" && awayVal !== "");
+        extra += `<button type="button" class="btn" data-action="save-tip" data-match="${m.id}"${canSave ? "" : " disabled"}>Tipp speichern</button>`;
       } else if (locked) {
         extra += `<span class="badge badge-locked">🔒 Tippabgabe geschlossen</span>`;
       }
@@ -1167,16 +1260,26 @@ class WmTippspielCard extends HTMLElement {
   }
 
   async _saveTip(btn) {
+    if (!this._selectedPlayer) {
+      this._showToast("Bitte zuerst einen Spieler auswählen.", "error");
+      return;
+    }
     const matchId = btn.getAttribute("data-match");
-    const inputs = this.shadowRoot.querySelectorAll(`.score-input[data-match="${matchId}"][data-kind="tip"]`);
+    const inputs = this.shadowRoot.querySelectorAll(
+      `.score-input[data-match="${matchId}"][data-kind="tip"]`
+    );
     let home;
     let away;
     inputs.forEach((inp) => {
       if (inp.getAttribute("data-side") === "home") home = inp.value;
       if (inp.getAttribute("data-side") === "away") away = inp.value;
     });
-    if (home === "" || away === "") return;
+    if (home === "" || away === "" || Number.isNaN(Number(home)) || Number.isNaN(Number(away))) {
+      this._showToast("Bitte beide Tore eingeben.", "error");
+      return;
+    }
     btn.disabled = true;
+    btn.textContent = "Speichern…";
     try {
       await this._callService("set_tip", {
         player_id: this._selectedPlayer,
@@ -1185,27 +1288,49 @@ class WmTippspielCard extends HTMLElement {
         away: Number(away),
       });
       delete this._draftTips[matchId];
+      this._stateFingerprintCache = "";
+      this._showToast("Tipp gespeichert ✓", "success");
+    } catch (err) {
+      console.error("[wm-tippspiel-card] set_tip failed:", err);
+      this._showToast(`Speichern fehlgeschlagen: ${err?.message || err}`, "error");
     } finally {
       btn.disabled = false;
+      btn.textContent = "Tipp speichern";
     }
   }
 
   async _saveResult(btn) {
     const matchId = btn.getAttribute("data-match");
-    const inputs = this.shadowRoot.querySelectorAll(`.score-input[data-match="${matchId}"][data-kind="result"]`);
+    const inputs = this.shadowRoot.querySelectorAll(
+      `.score-input[data-match="${matchId}"][data-kind="result"]`
+    );
     let home;
     let away;
     inputs.forEach((inp) => {
       if (inp.getAttribute("data-side") === "home") home = inp.value;
       if (inp.getAttribute("data-side") === "away") away = inp.value;
     });
-    if (home === "" || away === "") return;
+    if (home === "" || away === "" || Number.isNaN(Number(home)) || Number.isNaN(Number(away))) {
+      this._showToast("Bitte beide Ergebnis-Tore eingeben.", "error");
+      return;
+    }
     btn.disabled = true;
+    btn.textContent = "Speichern…";
     try {
-      await this._callService("set_result", { match_id: matchId, home: Number(home), away: Number(away) });
+      await this._callService("set_result", {
+        match_id: matchId,
+        home: Number(home),
+        away: Number(away),
+      });
       delete this._draftResults[matchId];
+      this._stateFingerprintCache = "";
+      this._showToast("Ergebnis gespeichert ✓", "success");
+    } catch (err) {
+      console.error("[wm-tippspiel-card] set_result failed:", err);
+      this._showToast(`Speichern fehlgeschlagen: ${err?.message || err}`, "error");
     } finally {
       btn.disabled = false;
+      btn.textContent = "Speichern";
     }
   }
 }
