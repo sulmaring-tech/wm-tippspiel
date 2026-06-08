@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.6.21";
+const WM_TIPPSPIEL_CARD_VERSION = "1.7.0";
 const AUTO_SAVE_DELAY_MS = 400;
 const MATCH_TIP_STATUS_CLASSES = [
   "tip-status-saved",
@@ -16,8 +16,10 @@ const KNOCKOUT_ROUNDS = [
   "Spiel um Platz 3",
   "Finale",
 ];
-const DEFAULT_ACCENT = "#fbbf24";
+const DEFAULT_ACCENT = "#87B8E0";
+const DEFAULT_ACCENT_DARK = "#6BA3D0";
 const DEFAULT_ACCENT_2 = "#22c55e";
+const CARD_LOGO_URL = "/wm_tippspiel/wwvt-logo.png";
 const KICKOFF_SOON_MINUTES = 120;
 const FLAG_CDN = "https://flagcdn.com/w40";
 
@@ -216,7 +218,8 @@ function defaultConfig(overrides = {}) {
     type: "custom:wm-tippspiel-card",
     entity: "",
     title: "WM Tippspiel 2026",
-    subtitle: "",
+    subtitle: "Fußball-WM 2026 · Tipprunde",
+    show_logo: true,
     player_id: "",
     admin: false,
     show_groups: [...ALL_GROUPS],
@@ -334,6 +337,8 @@ class WmTippspielCardEditor extends HTMLElement {
         return cfg.show_knockout !== false;
       case "show_rules":
         return cfg.show_rules !== false;
+      case "show_logo":
+        return cfg.show_logo !== false;
       case "auto_save_tips":
         return cfg.auto_save_tips !== false;
       default:
@@ -545,6 +550,9 @@ class WmTippspielCardEditor extends HTMLElement {
 
         <div class="ed-section">
           <div class="ed-title">Design</div>
+          <ha-formfield label="WWVT-Logo im Header anzeigen">
+            <ha-switch data-key="show_logo"></ha-switch>
+          </ha-formfield>
           <ha-textfield
             label="Akzentfarbe (Hex)"
             data-key="accent_color"
@@ -1610,6 +1618,10 @@ class WmTippspielCard extends HTMLElement {
     return this._config.accent_color || DEFAULT_ACCENT;
   }
 
+  _logoUrl() {
+    return CARD_LOGO_URL;
+  }
+
   _entryId() {
     const entryId = this._state?.attributes?.entry_id;
     if (entryId) return entryId;
@@ -1668,121 +1680,156 @@ class WmTippspielCard extends HTMLElement {
 
   _styles() {
     const accent = this._accent();
+    const accentDark = DEFAULT_ACCENT_DARK;
     return `
-      :host { display: block; width: 100%; }
+      :host {
+        display: block;
+        width: 100%;
+        --wm-bg: #0f1419;
+        --wm-bg-card: #1a2332;
+        --wm-bg-elevated: #243044;
+        --wm-border: #2d3f56;
+        --wm-text: #e8edf4;
+        --wm-text-muted: #8b9cb3;
+        --wm-accent: ${accent};
+        --wm-accent-dark: ${accentDark};
+        --wm-accent-2: ${DEFAULT_ACCENT_2};
+        --wm-danger: #ef4444;
+        --wm-radius: 12px;
+        --wm-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+        font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+        color: var(--wm-text);
+        line-height: 1.5;
+      }
       * { box-sizing: border-box; }
       ha-card {
         overflow: hidden;
         width: 100%;
         max-width: none;
-        border-radius: 20px;
-        border: none;
-        background: var(--ha-card-background, var(--card-background-color, #1a1d24));
-        box-shadow: 0 8px 32px rgba(0,0,0,0.22);
+        border-radius: var(--wm-radius);
+        border: 1px solid var(--wm-border);
+        background:
+          radial-gradient(ellipse at top, #1a2a3a 0%, transparent 55%),
+          var(--wm-bg);
+        box-shadow: var(--wm-shadow);
+        color: var(--wm-text);
       }
-      .card-wrap { position: relative; }
-      .hero {
+      .card-wrap.app-shell {
         position: relative;
-        padding: 20px 20px 18px;
-        background: linear-gradient(135deg, ${accent}33 0%, ${DEFAULT_ACCENT_2}22 45%, transparent 100%);
-        border-bottom: 1px solid rgba(255,255,255,0.06);
-        overflow: hidden;
+        padding: 16px 20px calc(36px + env(safe-area-inset-bottom, 0));
       }
-      .hero::after {
-        content: "⚽";
-        position: absolute;
-        right: -8px;
-        top: -16px;
-        font-size: 96px;
-        opacity: 0.07;
-        transform: rotate(18deg);
-        pointer-events: none;
-      }
-      .hero-top {
+      .app-header {
         display: flex;
-        align-items: flex-start;
         justify-content: space-between;
-        gap: 12px;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
       }
-      .hero-text h1 {
+      .header-brand {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        min-width: 0;
+      }
+      .header-logo {
+        height: 48px;
+        width: auto;
+        object-fit: contain;
+        flex-shrink: 0;
+      }
+      .header-brand h1 {
         margin: 0;
         font-size: 1.35rem;
-        font-weight: 800;
+        font-weight: 700;
         letter-spacing: -0.02em;
         line-height: 1.2;
+        color: var(--wm-text);
       }
-      .hero-text p {
-        margin: 4px 0 0;
-        font-size: 0.82rem;
-        opacity: 0.72;
+      .header-brand p {
+        margin: 2px 0 0;
+        font-size: 0.9rem;
+        color: var(--wm-text-muted);
+      }
+      .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-shrink: 0;
       }
       .badge-admin {
-        font-size: 0.68rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
+        background: rgba(135, 184, 224, 0.15);
+        color: var(--wm-accent);
         padding: 4px 10px;
         border-radius: 999px;
-        background: rgba(248,113,113,0.2);
-        color: #fca5a5;
-        border: 1px solid rgba(248,113,113,0.35);
+        font-size: 0.8rem;
+        font-weight: 600;
         white-space: nowrap;
       }
       .player-bar {
         display: flex;
         flex-wrap: wrap;
         gap: 8px;
-        margin-top: 14px;
+        margin-bottom: 16px;
       }
       .player-chip {
-        border: 1px solid rgba(255,255,255,0.12);
-        background: rgba(0,0,0,0.18);
-        color: inherit;
-        border-radius: 999px;
-        padding: 7px 14px;
-        font-size: 0.82rem;
+        padding: 6px 12px;
+        border-radius: 8px;
+        border: 1px solid var(--wm-border);
+        background: var(--wm-bg-card);
+        color: var(--wm-text-muted);
+        font-size: 0.85rem;
         font-weight: 600;
         cursor: pointer;
-        transition: transform 0.15s, border-color 0.15s, background 0.15s;
+        transition: background 0.15s, border-color 0.15s, color 0.15s;
       }
-      .player-chip:hover { transform: translateY(-1px); }
+      .player-chip:hover {
+        background: var(--wm-bg-elevated);
+        color: var(--wm-text);
+      }
       .player-chip.active {
-        border-color: ${accent};
-        background: ${accent}28;
-        color: ${accent};
-        box-shadow: 0 0 0 1px ${accent}44;
+        background: var(--wm-accent);
+        color: #0f1419;
+        border-color: var(--wm-accent);
       }
-      .tabs {
+      .tabs.tab-bar {
         display: flex;
-        gap: 8px;
-        padding: 14px 16px 0;
+        gap: 4px;
+        margin-bottom: 20px;
+        border-bottom: 1px solid var(--wm-border);
+        padding: 0;
+        overflow-x: auto;
+        scrollbar-width: none;
       }
+      .tabs.tab-bar::-webkit-scrollbar { display: none; }
       .tab {
-        flex: 1;
-        border: 1px solid rgba(255,255,255,0.1);
-        background: rgba(255,255,255,0.03);
-        color: inherit;
-        border-radius: 12px;
-        padding: 10px 8px;
-        font-size: 0.78rem;
+        flex: 0 0 auto;
+        border: none;
+        background: transparent;
+        color: var(--wm-text-muted);
+        border-radius: 0;
+        border-bottom: 2px solid transparent;
+        margin-bottom: -1px;
+        padding: 10px 16px;
+        min-height: 44px;
+        font-size: 0.88rem;
         font-weight: 600;
         cursor: pointer;
-        display: flex;
-        flex-direction: column;
+        display: inline-flex;
+        flex-direction: row;
         align-items: center;
-        gap: 4px;
-        opacity: 0.75;
-        transition: all 0.15s;
-      }
-      .tab ha-icon { --mdc-icon-size: 20px; opacity: 0.9; }
-      .tab.active {
+        gap: 8px;
         opacity: 1;
-        border-color: ${accent}88;
-        background: ${accent}18;
-        color: ${accent};
+        transition: color 0.15s, border-color 0.15s;
+        white-space: nowrap;
       }
-      .body {
-        padding: 14px 16px 16px;
+      .tab ha-icon { --mdc-icon-size: 18px; opacity: 0.9; }
+      .tab.active {
+        color: var(--wm-accent);
+        border-bottom-color: var(--wm-accent);
+      }
+      .body.app-main {
+        padding: 0;
         container-type: inline-size;
         container-name: wm-body;
       }
@@ -1816,13 +1863,13 @@ class WmTippspielCard extends HTMLElement {
           grid-template-columns: repeat(3, minmax(0, 1fr));
         }
       }
-      .match {
-        border: 1px solid rgba(255,255,255,0.07);
-        border-radius: 16px;
-        padding: 14px;
+      .match,
+      .match-card {
+        background: var(--wm-bg-card);
+        border: 1px solid var(--wm-border);
+        border-radius: var(--wm-radius);
+        padding: 16px;
         margin-bottom: 12px;
-        background: rgba(0,0,0,0.12);
-        backdrop-filter: blur(6px);
         transition: box-shadow 0.2s ease, border-color 0.2s ease;
       }
       .match.tip-status-saved {
@@ -1836,8 +1883,8 @@ class WmTippspielCard extends HTMLElement {
         opacity: 0.72;
       }
       .match.tip-status-exact {
-        box-shadow: 0 0 0 2px #fbbf24, 0 0 12px rgba(251,191,36,0.25);
-        border-color: rgba(251,191,36,0.45);
+        border-color: var(--wm-accent-2);
+        box-shadow: 0 0 0 1px var(--wm-accent-2), 0 0 12px rgba(34, 197, 94, 0.2);
       }
       .match.compact {
         padding: 8px 10px;
@@ -1943,26 +1990,28 @@ class WmTippspielCard extends HTMLElement {
         margin-bottom: 14px;
       }
       .view-filter-btn {
-        border: 1px solid rgba(255,255,255,0.12);
-        background: rgba(255,255,255,0.04);
-        color: inherit;
-        border-radius: 999px;
+        border: 1px solid var(--wm-border);
+        background: var(--wm-bg-card);
+        color: var(--wm-text-muted);
+        border-radius: 8px;
         padding: 8px 16px;
-        font-size: 0.78rem;
+        font-size: 0.82rem;
         font-weight: 600;
         cursor: pointer;
-        opacity: 0.75;
-        transition: all 0.15s;
+        transition: background 0.15s, border-color 0.15s, color 0.15s;
+      }
+      .view-filter-btn:hover {
+        background: var(--wm-bg-elevated);
+        color: var(--wm-text);
       }
       .view-filter-btn.active {
-        opacity: 1;
-        border-color: ${accent}88;
-        background: ${accent}18;
-        color: ${accent};
+        background: var(--wm-accent);
+        color: #0f1419;
+        border-color: var(--wm-accent);
       }
       .match-status-badge.status-soon { background: rgba(234,179,8,0.18); color: #fde047; }
       .match-status-badge.status-locked { background: rgba(148,163,184,0.15); color: #cbd5e1; }
-      .match-status-badge.status-exact { background: rgba(251,191,36,0.2); color: #fde68a; border: 1px solid rgba(251,191,36,0.45); }
+      .match-status-badge.status-exact { background: rgba(34,197,94,0.15); color: #86efac; border: 1px solid rgba(34,197,94,0.35); }
       .team-label {
         overflow: hidden;
         text-overflow: ellipsis;
@@ -1979,9 +2028,9 @@ class WmTippspielCard extends HTMLElement {
         margin-bottom: 14px;
       }
       .group-table {
-        border-radius: 10px;
-        border: 1px solid rgba(255,255,255,0.08);
-        background: rgba(0,0,0,0.15);
+        border-radius: var(--wm-radius);
+        border: 1px solid var(--wm-border);
+        background: var(--wm-bg-card);
         overflow: hidden;
         font-size: 0.68rem;
       }
@@ -1990,8 +2039,9 @@ class WmTippspielCard extends HTMLElement {
         font-weight: 800;
         text-transform: uppercase;
         letter-spacing: 0.06em;
-        background: rgba(255,255,255,0.04);
-        border-bottom: 1px solid rgba(255,255,255,0.06);
+        background: var(--wm-bg-elevated);
+        border-bottom: 1px solid var(--wm-border);
+        color: var(--wm-accent);
       }
       .group-table-row {
         display: grid;
@@ -2032,15 +2082,9 @@ class WmTippspielCard extends HTMLElement {
         0%, 100% { transform: scale(1); }
         50% { transform: scale(1.04); }
       }
-      .podium-item.flash {
-        animation: podiumPulse 300ms ease;
-      }
       @keyframes pointsFlash {
         0%, 100% { background: transparent; }
-        50% { background: rgba(251,191,36,0.28); border-radius: 6px; }
-      }
-      .standing-row.flash-points .num:first-of-type {
-        animation: pointsFlash 300ms ease;
+        50% { background: rgba(135, 184, 224, 0.22); border-radius: 6px; }
       }
       .match-meta {
         display: flex;
@@ -2092,17 +2136,17 @@ class WmTippspielCard extends HTMLElement {
         gap: 6px;
         padding: 6px 8px;
         border-radius: 14px;
-        background: rgba(0,0,0,0.22);
-        border: 1px solid rgba(255,255,255,0.08);
+        background: var(--wm-bg);
+        border: 1px solid var(--wm-border);
       }
       .score-input {
         width: 38px;
         height: 38px;
         text-align: center;
-        border-radius: 10px;
-        border: 1px solid rgba(255,255,255,0.15);
-        background: rgba(255,255,255,0.06);
-        color: inherit;
+        border-radius: 8px;
+        border: 1px solid var(--wm-border);
+        background: var(--wm-bg);
+        color: var(--wm-text);
         font-size: 1.1rem;
         font-weight: 800;
         font-variant-numeric: tabular-nums;
@@ -2158,8 +2202,8 @@ class WmTippspielCard extends HTMLElement {
         font-weight: 700;
         font-size: 0.82rem;
         cursor: pointer;
-        background: linear-gradient(135deg, ${accent}, ${DEFAULT_ACCENT_2});
-        color: #111;
+        background: linear-gradient(135deg, var(--wm-accent), var(--wm-accent-dark));
+        color: #0f1419;
         transition: opacity 0.15s, transform 0.15s;
       }
       .btn:hover { transform: translateY(-1px); }
@@ -2243,9 +2287,9 @@ class WmTippspielCard extends HTMLElement {
       .group-label:first-child { margin-top: 0; }
       .accordion {
         margin-bottom: 8px;
-        border-radius: 12px;
-        border: 1px solid rgba(255,255,255,0.08);
-        background: rgba(255,255,255,0.02);
+        border-radius: var(--wm-radius);
+        border: 1px solid var(--wm-border);
+        background: var(--wm-bg-card);
         overflow: hidden;
       }
       .accordion > summary {
@@ -2280,67 +2324,131 @@ class WmTippspielCard extends HTMLElement {
       }
       .accordion-body {
         padding: 0 10px 10px;
-        border-top: 1px solid rgba(255,255,255,0.06);
+        border-top: 1px solid var(--wm-border);
       }
-      .podium {
-        display: grid;
-        grid-template-columns: 1fr 1.15fr 1fr;
-        gap: 8px;
-        align-items: end;
-        margin-bottom: 18px;
-        min-height: 130px;
+      .standings-panel { min-width: 0; max-width: 100%; }
+      .standings-rankings-row {
+        display: flex;
+        gap: 24px;
+        align-items: flex-end;
+        flex-wrap: wrap;
       }
-      .podium-item {
+      .standings-podium {
+        flex-shrink: 0;
+        width: min(280px, 100%);
+        padding: 16px;
+        background: var(--wm-bg-card);
+        border: 1px solid var(--wm-border);
+        border-radius: var(--wm-radius);
+      }
+      .standings-podium-title {
+        margin: 0 0 16px;
+        font-size: 0.95rem;
+        color: var(--wm-accent);
         text-align: center;
-        border-radius: 14px 14px 0 0;
-        padding: 10px 6px 12px;
-        background: rgba(255,255,255,0.04);
-        border: 1px solid rgba(255,255,255,0.08);
       }
-      .podium-item.first {
-        order: 2;
-        min-height: 118px;
-        background: linear-gradient(180deg, ${accent}33, rgba(255,255,255,0.03));
-        border-color: ${accent}55;
-      }
-      .podium-item.second { order: 1; min-height: 92px; }
-      .podium-item.third { order: 3; min-height: 82px; }
-      .podium-rank { font-size: 1.4rem; }
-      .podium-name {
-        font-weight: 700;
-        font-size: 0.82rem;
-        margin: 4px 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-      .podium-pts {
-        font-size: 1.1rem;
-        font-weight: 800;
-        color: ${accent};
-      }
-      .standing-row {
-        display: grid;
-        grid-template-columns: 32px 1fr repeat(3, 44px);
+      .standings-podium-stage {
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
         gap: 8px;
+        min-height: 200px;
+      }
+      .podium-slot {
+        display: flex;
+        flex-direction: column;
         align-items: center;
-        padding: 10px 4px;
-        border-bottom: 1px solid rgba(255,255,255,0.05);
+        flex: 1;
+        max-width: 88px;
+      }
+      .podium-slot.flash .podium-block {
+        animation: podiumPulse 300ms ease;
+      }
+      .podium-player {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        margin-bottom: 8px;
+        text-align: center;
+        min-height: 72px;
+        justify-content: flex-end;
+      }
+      .podium-medal { font-size: 1.35rem; line-height: 1; }
+      .podium-name {
+        font-size: 0.78rem;
+        font-weight: 600;
+        line-height: 1.25;
+        word-break: break-word;
+      }
+      .podium-points {
+        font-size: 0.72rem;
+        color: var(--wm-text-muted);
+        font-weight: 600;
+      }
+      .podium-block {
+        width: 100%;
+        display: grid;
+        place-items: center;
+        border-radius: 8px 8px 0 0;
+        color: #86b8e6;
+        font-weight: 800;
+        font-size: 1.25rem;
+      }
+      .podium-block-first {
+        height: 100px;
+        background: linear-gradient(180deg, #f5d547 0%, #c9a227 100%);
+        box-shadow: 0 -2px 12px rgba(245, 213, 71, 0.25);
+      }
+      .podium-block-second {
+        height: 72px;
+        background: linear-gradient(180deg, #e8e8e8 0%, #a8a8a8 100%);
+        box-shadow: 0 -2px 10px rgba(200, 200, 200, 0.15);
+      }
+      .podium-block-third {
+        height: 52px;
+        background: linear-gradient(180deg, #e8a86b 0%, #b87333 100%);
+        box-shadow: 0 -2px 10px rgba(184, 115, 51, 0.2);
+      }
+      .podium-block-empty { opacity: 0.35; }
+      .podium-slot-empty .podium-block { margin-top: 72px; }
+      .podium-rank { font-size: 1.25rem; font-weight: 800; }
+      .standings-table-wrap {
+        flex: 1;
+        min-width: 0;
+        overflow-x: auto;
+      }
+      .standings-table {
+        width: 100%;
+        min-width: 420px;
+        border-collapse: collapse;
+        background: var(--wm-bg-card);
+        border-radius: var(--wm-radius);
+        overflow: hidden;
+        border: 1px solid var(--wm-border);
+      }
+      .standings-table th,
+      .standings-table td {
+        padding: 10px 14px;
+        text-align: left;
+        border-bottom: 1px solid var(--wm-border);
         font-size: 0.86rem;
       }
-      .standing-row.head {
-        font-size: 0.68rem;
-        opacity: 0.55;
+      .standings-table th {
+        background: var(--wm-bg-elevated);
+        color: var(--wm-text-muted);
+        font-size: 0.78rem;
         text-transform: uppercase;
         letter-spacing: 0.04em;
-        padding-top: 0;
       }
-      .rank-num {
-        width: 26px; height: 26px;
-        border-radius: 50%;
-        display: flex; align-items: center; justify-content: center;
-        font-weight: 800; font-size: 0.78rem;
-        background: rgba(255,255,255,0.08);
+      .standings-table td.num,
+      .standings-table th.num { text-align: center; }
+      .standings-table td.points {
+        font-weight: 700;
+        color: var(--wm-accent);
+      }
+      .standings-table tr.flash-points td.points {
+        animation: pointsFlash 300ms ease;
       }
       .num { text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; }
       .bracket-scroll {
@@ -2407,8 +2515,8 @@ class WmTippspielCard extends HTMLElement {
       .bracket-slot.tip-status-soon { border-left: 3px solid #eab308; }
       .bracket-slot.tip-status-locked { border-left: 3px solid #94a3b8; opacity: 0.72; }
       .bracket-slot.tip-status-exact {
-        box-shadow: 0 0 0 2px #fbbf24;
-        border-color: rgba(251,191,36,0.45);
+        border-color: var(--wm-accent-2);
+        box-shadow: 0 0 0 1px var(--wm-accent-2);
       }
       .bracket-slot-head {
         display: flex;
@@ -2486,21 +2594,22 @@ class WmTippspielCard extends HTMLElement {
       .empty {
         text-align: center;
         padding: 28px 16px;
-        border-radius: 16px;
-        background: rgba(255,255,255,0.03);
-        border: 1px dashed rgba(255,255,255,0.12);
+        border-radius: var(--wm-radius);
+        background: var(--wm-bg-card);
+        border: 1px dashed var(--wm-border);
       }
       .empty-icon { font-size: 2.2rem; margin-bottom: 8px; }
       .empty h3 { margin: 0 0 6px; font-size: 1rem; }
       .empty p { margin: 0; font-size: 0.82rem; opacity: 0.7; line-height: 1.45; }
       .rules {
-        margin-top: 14px;
+        margin-top: 16px;
         padding: 10px 12px;
-        border-radius: 12px;
-        font-size: 0.72rem;
-        opacity: 0.65;
+        border-radius: var(--wm-radius);
+        font-size: 0.78rem;
+        color: var(--wm-text-muted);
         line-height: 1.45;
-        background: rgba(255,255,255,0.03);
+        background: var(--wm-bg-card);
+        border: 1px solid var(--wm-border);
         text-align: center;
       }
       .missing {
@@ -2518,6 +2627,13 @@ class WmTippspielCard extends HTMLElement {
         letter-spacing: 0.04em;
       }
       @media (max-width: 768px) {
+        .card-wrap.app-shell { padding: 12px 14px calc(28px + env(safe-area-inset-bottom, 0)); }
+        .header-logo { height: 40px; }
+        .standings-rankings-row { flex-direction: column; align-items: stretch; }
+        .standings-podium { width: 100%; max-width: 360px; margin: 0 auto; }
+        .standings-table { min-width: 0; font-size: 0.82rem; }
+        .standings-table th,
+        .standings-table td { padding: 8px 6px; }
         .match-row-compact .teams-inline,
         .match .teams {
           grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
@@ -2623,30 +2739,35 @@ class WmTippspielCard extends HTMLElement {
       else body = this._renderTips(groupMatches, playerTips, results, playerId, players, groupTables);
     }
 
+    const showLogo = cfg.show_logo !== false;
+    const subtitle = cfg.subtitle || "Fußball-WM 2026 · Tipprunde";
     this.shadowRoot.innerHTML = `
       <style>${this._styles()}</style>
       <ha-card>
-        <div class="card-wrap">
-          <div class="hero">
-            <div class="hero-top">
-              <div class="hero-text">
+        <div class="card-wrap app-shell">
+          <header class="app-header">
+            <div class="header-brand">
+              ${showLogo ? `<img class="header-logo" src="${this._logoUrl()}" alt="" />` : ""}
+              <div>
                 <h1>${escapeHtml(cfg.title || "WM Tippspiel")}</h1>
-                ${cfg.subtitle ? `<p>${escapeHtml(cfg.subtitle)}</p>` : `<p>Fußball-WM 2026 · Tipprunde</p>`}
+                <p>${escapeHtml(subtitle)}</p>
               </div>
+            </div>
+            <div class="header-actions">
               ${this._isAdmin() ? `<span class="badge-admin">Admin</span>` : ""}
             </div>
-            ${
-              !missing && (this._data().players || []).length
-                ? `<div class="player-bar">${this._data()
-                    .players.map(
-                      (p) =>
-                        `<button type="button" class="player-chip ${p.id === this._selectedPlayer ? "active" : ""}" data-player-id="${escapeHtml(p.id)}">${escapeHtml(p.name)}</button>`
-                    )
-                    .join("")}</div>`
-                : ""
-            }
-          </div>
-          <div class="tabs">
+          </header>
+          ${
+            !missing && (this._data().players || []).length
+              ? `<div class="player-bar">${this._data()
+                  .players.map(
+                    (p) =>
+                      `<button type="button" class="player-chip ${p.id === this._selectedPlayer ? "active" : ""}" data-player-id="${escapeHtml(p.id)}">${escapeHtml(p.name)}</button>`
+                  )
+                  .join("")}</div>`
+              : ""
+          }
+          <nav class="tabs tab-bar" aria-label="Bereiche">
             ${this._visibleTabs()
               .map(
                 (t) =>
@@ -2656,8 +2777,8 @@ class WmTippspielCard extends HTMLElement {
                 </button>`
               )
               .join("")}
-          </div>
-          <div class="body" data-match-cols="${this._matchColumns()}">${body}</div>
+          </nav>
+          <main class="body app-main" data-match-cols="${this._matchColumns()}">${body}</main>
           ${cfg.show_rules !== false ? `<div class="rules">⚽ 3 Punkte exakt · 1 Punkt richtige Tendenz</div>` : ""}
           <div class="version-badge">v${WM_TIPPSPIEL_CARD_VERSION}</div>
         </div>
@@ -2801,49 +2922,71 @@ class WmTippspielCard extends HTMLElement {
 
     const top3 = standings.slice(0, 3);
     const podiumSlots = [
-      { player: top3[1], cls: "second", medal: "🥈" },
-      { player: top3[0], cls: "first", medal: "🥇" },
-      { player: top3[2], cls: "third", medal: "🥉" },
-    ].filter((slot) => slot.player);
+      { player: top3[1], placement: "second", medal: "🥈" },
+      { player: top3[0], placement: "first", medal: "🥇" },
+      { player: top3[2], placement: "third", medal: "🥉" },
+    ];
     const podiumFlash = this._podiumFlashIds || new Set();
-    const podium = podiumSlots.length
-      ? `<div class="podium">${podiumSlots
-          .map(({ player: s, cls, medal }) => {
-            const flash = podiumFlash.has(s.id) ? " flash" : "";
-            return `<div class="podium-item ${cls}${flash}">
-              <div class="podium-rank">${medal}</div>
-              <div class="podium-name">${escapeHtml(s.name)}</div>
-              <div class="podium-pts">${s.points} Pkt.</div>
-            </div>`;
-          })
-          .join("")}</div>`
-      : "";
+    const placementRank = { first: 1, second: 2, third: 3 };
+    const podiumStage = podiumSlots
+      .map(({ player: s, placement, medal }) => {
+        const flash = s && podiumFlash.has(s.id) ? " flash" : "";
+        const blockClass = `podium-block-${placement}`;
+        const rank = placementRank[placement];
+        return `<div class="podium-slot${s ? "" : " podium-slot-empty"}${flash}">
+          <div class="podium-player">
+            <span class="podium-medal">${s ? medal : ""}</span>
+            <span class="podium-name">${s ? escapeHtml(s.name) : "—"}</span>
+            <span class="podium-points">${s ? `${s.points} Pkt.` : ""}</span>
+          </div>
+          <div class="podium-block ${blockClass}${s ? "" : " podium-block-empty"}"><span class="podium-rank">${rank}</span></div>
+        </div>`;
+      })
+      .join("");
 
     const flashIds = this._standingsFlashIds || new Set();
     const rows = standings
       .map((s, i) => {
         const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : s.rank;
         const flash = flashIds.has(s.id) ? " flash-points" : "";
-        return `<div class="standing-row${flash}">
-          <div class="rank-num">${medal}</div>
-          <div>${escapeHtml(s.name)}${this._renderRankTrend(s.rank_change)}</div>
-          <div class="num">${s.points}</div>
-          <div class="num">${s.exact}</div>
-          <div class="num">${s.tendency}</div>
-        </div>`;
+        return `<tr${flash ? ` class="${flash.trim()}"` : ""}>
+          <td class="num">${medal}</td>
+          <td>${escapeHtml(s.name)}${this._renderRankTrend(s.rank_change)}</td>
+          <td class="num points">${s.points}</td>
+          <td class="num">${s.exact}</td>
+          <td class="num">${s.tendency}</td>
+        </tr>`;
       })
       .join("");
 
-    return `${podium}
-      <div class="standing-row head">
-        <div>#</div><div>Spieler</div><div class="num">Pkt</div><div class="num">Exakt</div><div class="num">Tendenz</div>
-      </div>${rows}`;
+    return `<section class="standings-panel">
+      <div class="standings-rankings-row">
+        <div class="standings-podium">
+          <h2 class="standings-podium-title">Top 3</h2>
+          <div class="standings-podium-stage">${podiumStage}</div>
+        </div>
+        <div class="standings-table-wrap">
+          <table class="standings-table">
+            <thead>
+              <tr>
+                <th class="num">#</th>
+                <th>Spieler</th>
+                <th class="num">Pkt</th>
+                <th class="num">Exakt</th>
+                <th class="num">Tendenz</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>
+    </section>`;
   }
 
   _renderMatchTeams(m, scoreHtml, extra = "", status = "pending", compact = false) {
     const statusClass = status ? ` tip-status-${status}` : "";
     if (compact) {
-      return `<div class="match compact${statusClass}" data-match-id="${m.id}">
+      return `<div class="match match-card compact${statusClass}" data-match-id="${m.id}">
         <div class="match-row-compact">
           <div class="teams-inline">
             <div class="team-side home">
@@ -2861,7 +3004,7 @@ class WmTippspielCard extends HTMLElement {
         </div>
       </div>`;
     }
-    return `<div class="match${statusClass}" data-match-id="${m.id}">
+    return `<div class="match match-card${statusClass}" data-match-id="${m.id}">
       <div class="match-meta">
         <span>${formatKickoff(m.kickoff)}</span>
         <span>${escapeHtml(m.venue || m.stage || "")}</span>
