@@ -230,12 +230,13 @@ class WmTippspielStore:
             raise ValueError(f"Unbekanntes Spiel: {match_id}")
         if is_past_kickoff(match.get("kickoff")):
             raise ValueError("Tippabgabe geschlossen – Anpfiff bereits erfolgt.")
-        player_tips = self._data.get("tips", {}).get(player_id, {})
-        if match_id not in player_tips:
+        tips = self._data.setdefault("tips", {})
+        player_tips = tips.get(player_id)
+        if not player_tips or match_id not in player_tips:
             return False
         del player_tips[match_id]
         if not player_tips:
-            self._data.get("tips", {}).pop(player_id, None)
+            tips.pop(player_id, None)
         return True
 
     def set_result(self, match_id: str, home: int, away: int) -> None:
