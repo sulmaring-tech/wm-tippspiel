@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.9.7";
+const WM_TIPPSPIEL_CARD_VERSION = "1.9.8";
 const AUTO_SAVE_DELAY_MS = 400;
 const MATCH_TIP_STATUS_CLASSES = [
   "tip-status-saved",
@@ -26,6 +26,7 @@ const TABS = [
   { id: "tips", label: "Vorrunde", icon: "mdi:soccer" },
   { id: "bracket", label: "KO-Runde", icon: "mdi:tournament", knockout: true },
   { id: "calendar", label: "Kalender", icon: "mdi:calendar-month" },
+  { id: "groups", label: "Gruppentabellen", icon: "mdi:table", groupTables: true },
   { id: "standings", label: "Rangliste", icon: "mdi:podium-gold" },
 ];
 
@@ -414,6 +415,8 @@ class WmTippspielCardEditor extends HTMLElement {
         return Boolean(cfg.admin);
       case "show_knockout":
         return cfg.show_knockout !== false;
+      case "show_group_tables":
+        return cfg.show_group_tables !== false;
       case "show_rules":
         return cfg.show_rules !== false;
       case "auto_save_tips":
@@ -603,7 +606,7 @@ class WmTippspielCardEditor extends HTMLElement {
           <ha-formfield label="Kompakter Modus (eine Zeile pro Spiel)">
             <ha-switch data-key="compact_mode"></ha-switch>
           </ha-formfield>
-          <ha-formfield label="Gruppentabellen in der Vorrunde">
+          <ha-formfield label="Gruppentabellen-Tab anzeigen">
             <ha-switch data-key="show_group_tables"></ha-switch>
           </ha-formfield>
           <p class="ed-hint">Bei Auto-Save wird gespeichert, sobald beide Tore eingegeben sind (ca. 1 Sek. Pause). Sonst erscheint der Button „Tipp speichern“.</p>
@@ -1643,7 +1646,12 @@ class WmTippspielCard extends HTMLElement {
 
   _visibleTabs() {
     const showKnockout = this._config.show_knockout !== false;
-    return TABS.filter((t) => !t.knockout || showKnockout);
+    const showGroupTables = this._config.show_group_tables !== false;
+    return TABS.filter((t) => {
+      if (t.knockout && !showKnockout) return false;
+      if (t.groupTables && !showGroupTables) return false;
+      return true;
+    });
   }
 
   _defaultOpenAccordionId() {
@@ -3129,9 +3137,17 @@ class WmTippspielCard extends HTMLElement {
         color: var(--wm-text-muted);
         font-size: 0.9rem;
       }
-      .calendar-panel h2 {
+      .calendar-panel h2,
+      .group-tables-panel h2 {
         margin: 0 0 12px;
         font-size: 1.1rem;
+      }
+      .group-tables-panel {
+        min-width: 0;
+        max-width: 100%;
+      }
+      .group-tables-panel .group-tables {
+        margin-bottom: 0;
       }
       .calendar-panel-hint {
         margin: 0 0 16px;
@@ -3442,14 +3458,17 @@ class WmTippspielCard extends HTMLElement {
       const playerTips = tips[playerId] || {};
 
       if (this._tab === "bracket" && this._config.show_knockout === false) this._tab = "tips";
+      if (this._tab === "groups" && this._config.show_group_tables === false) this._tab = "tips";
 
       if (this._tab === "standings") {
         this._detectStandingsFlash(standings);
         body = this._renderStandings(standings);
+      } else if (this._tab === "groups") {
+        body = this._renderGroupTablesTab(groupTables);
       } else if (this._tab === "calendar") {
         body = this._renderCalendar(this._filteredMatches(matches), playerTips, results, playerId, players);
       } else if (this._tab === "bracket") body = this._renderBracket(knockoutMatches, playerTips, results, playerId, players);
-      else body = this._renderTips(groupMatches, playerTips, results, playerId, players, groupTables);
+      else body = this._renderTips(groupMatches, playerTips, results, playerId, players);
     }
 
     const subtitle = cfg.subtitle || "Fußball-WM 2026 · Tipprunde";
@@ -3556,6 +3575,14 @@ class WmTippspielCard extends HTMLElement {
     if (n > 0) return `<span class="rank-trend up" title="Platz verbessert">↑${n}</span>`;
     if (n < 0) return `<span class="rank-trend down" title="Platz verschlechtert">↓${Math.abs(n)}</span>`;
     return "";
+  }
+
+  _renderGroupTablesTab(groupTables) {
+    const tablesHtml = this._renderGroupTables(groupTables);
+    return `<section class="group-tables-panel">
+      <h2>Gruppentabellen</h2>
+      ${tablesHtml || `<p class="empty-hint">Gruppentabellen nicht verfügbar.</p>`}
+    </section>`;
   }
 
   _renderGroupTables(groupTables) {
@@ -3914,7 +3941,7 @@ class WmTippspielCard extends HTMLElement {
     return tend(tip.home, tip.away) === tend(result.home, result.away) ? 1 : 0;
   }
 
-  _renderTips(matches, playerTips, results, playerId, players, groupTables = {}) {
+  _renderTips(matches, playerTips, results, playerId, players) {
     if (!players.length) {
       return `<div class="empty">
         <div class="empty-icon">👥</div>
@@ -3929,8 +3956,6 @@ class WmTippspielCard extends HTMLElement {
       return `<div class="empty"><div class="empty-icon">⚽</div><h3>Keine Spiele</h3><p>Gruppenfilter in den Einstellungen anpassen.</p></div>`;
     }
 
-    const tablesHtml =
-      this._config.show_group_tables !== false ? this._renderGroupTables(groupTables) : "";
     const renderMatchFn = this._createMatchRenderer(playerTips, results, playerId);
     const viewMode =
       this._tipsViewMode === "date" ? "date" : this._tipsViewMode === "team" ? "team" : "group";
@@ -3958,7 +3983,7 @@ class WmTippspielCard extends HTMLElement {
         : `<p class="empty-hint">Wähle ein oder mehrere Teams aus.</p>`;
     }
 
-    return `${tablesHtml}${filterHtml}${chipsHtml}${accordions}`;
+    return `${filterHtml}${chipsHtml}${accordions}`;
   }
 
   async _saveTip(matchId, options = {}) {
