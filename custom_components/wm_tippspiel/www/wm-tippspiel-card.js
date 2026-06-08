@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.6.14";
+const WM_TIPPSPIEL_CARD_VERSION = "1.6.15";
 const AUTO_SAVE_DELAY_MS = 400;
 const MATCH_TIP_STATUS_CLASSES = [
   "tip-status-saved",
@@ -738,6 +738,7 @@ class WmTippspielCard extends HTMLElement {
     this._tipSaveStatus = this._tipSaveStatus || {};
     this._persistChains = this._persistChains || {};
     this._dirtyTips = this._dirtyTips || new Set();
+    this._tipsSnapshot = this._tipsSnapshot || {};
     this._displayedPlayerId = this._displayedPlayerId ?? null;
     this._tipsViewMode = this._tipsViewMode || "group";
     if (!this.shadowRoot) {
@@ -817,13 +818,11 @@ class WmTippspielCard extends HTMLElement {
       }
       if (!this._selectedPlayer) return;
       const playerId = this._selectedPlayer;
-      const bucket = this._draftTipsForPlayer(playerId);
-      bucket[matchId] = bucket[matchId] || {};
-      bucket[matchId][side] = input.value;
+      this._syncDraftTipFromDom(matchId, playerId);
       this._markTipDirty(playerId, matchId);
       this._syncMatchTipVisuals(matchId);
       if (this._config.auto_save_tips !== false) {
-        if (this._tipInputsEmpty(matchId, playerId) && this._getSavedTip(matchId, playerId)) {
+        if (this._shouldClearTip(matchId, playerId)) {
           this._clearAutoSaveTimer(matchId);
           void this._persistTip(matchId, { silent: true, playerId });
         } else {
@@ -965,6 +964,7 @@ class WmTippspielCard extends HTMLElement {
       this._state = { ...this._state, attributes: { ...attrs, tips } };
     }
     this._stateFingerprintCache = this._stateFingerprint(this._state);
+    this._updateTipSnapshot(matchId, playerId, { home, away });
   }
 
   _applyClearedTip(matchId, playerId = this._selectedPlayer) {
@@ -988,6 +988,7 @@ class WmTippspielCard extends HTMLElement {
       this._state = { ...this._state, attributes: { ...attrs, tips } };
     }
     this._stateFingerprintCache = this._stateFingerprint(this._state);
+    this._updateTipSnapshot(matchId, playerId, null);
   }
 
   _applySavedResult(matchId, home, away) {
@@ -1216,7 +1217,41 @@ class WmTippspielCard extends HTMLElement {
 
   _getSavedTip(matchId, playerId = this._selectedPlayer) {
     if (!playerId) return null;
-    return this._playerTipsFor(playerId)[matchId] || null;
+    const live = this._playerTipsFor(playerId)[matchId];
+    if (live) return live;
+    return this._getSnapshottedTip(matchId, playerId);
+  }
+
+  _getSnapshottedTip(matchId, playerId) {
+    return this._tipsSnapshot?.[playerId]?.[matchId] || null;
+  }
+
+  _snapshotPlayerTips(playerId = this._selectedPlayer) {
+    if (!playerId) return;
+    this._tipsSnapshot[playerId] = { ...this._playerTipsFor(playerId) };
+  }
+
+  _updateTipSnapshot(matchId, playerId, tipOrNull) {
+    if (!playerId) return;
+    const bucket = { ...(this._tipsSnapshot[playerId] || {}) };
+    if (tipOrNull) bucket[matchId] = tipOrNull;
+    else delete bucket[matchId];
+    this._tipsSnapshot[playerId] = bucket;
+  }
+
+  _syncDraftTipFromDom(matchId, playerId) {
+    const { homeIn, awayIn } = this._tipInputElements(matchId);
+    if (!homeIn || !awayIn) return;
+    const bucket = this._draftTipsForPlayer(playerId);
+    bucket[matchId] = { home: homeIn.value ?? "", away: awayIn.value ?? "" };
+  }
+
+  _shouldClearTip(matchId, playerId = this._selectedPlayer) {
+    if (!playerId || !this._tipInputsEmpty(matchId, playerId)) return false;
+    return Boolean(
+      this._getSavedTip(matchId, playerId) ||
+      this._dirtyTips.has(this._persistKey(playerId, matchId))
+    );
   }
 
   _playerTipsFor(playerId, attrs = null) {
@@ -1234,7 +1269,7 @@ class WmTippspielCard extends HTMLElement {
     if (match && isPastKickoff(match.kickoff, 0)) return;
     this._clearAutoSaveTimer(matchId);
     const canSave = this._tipInputsValid(matchId, playerId);
-    const canClear = this._tipInputsEmpty(matchId, playerId) && this._getSavedTip(matchId, playerId);
+    const canClear = this._shouldClearTip(matchId, playerId);
     if (!canSave && !canClear) {
       this._resetTipSaveBadge(matchId);
       return;
@@ -1278,8 +1313,8 @@ class WmTippspielCard extends HTMLElement {
       await this._saveTip(matchId, { ...options, playerId });
       return;
     }
-    if (this._tipInputsEmpty(matchId, playerId) && this._getSavedTip(matchId, playerId)) {
-      await this._clearTip(matchId, { ...options, playerId });
+    if (this._shouldClearTip(matchId, playerId)) {
+      await this._clearTip(matchId, { ...options, playerId, force: true });
       return;
     }
     if (playerId === this._selectedPlayer) {
@@ -2559,6 +2594,7 @@ class WmTippspielCard extends HTMLElement {
     }
     if (this._selectedPlayer) {
       this._displayedPlayerId = this._selectedPlayer;
+      this._snapshotPlayerTips(this._selectedPlayer);
     }
   }
 
@@ -3070,7 +3106,7 @@ class WmTippspielCard extends HTMLElement {
       return;
     }
 
-    if (!this._getSavedTip(matchId, playerId)) {
+    if (!options.force && !this._shouldClearTip(matchId, playerId)) {
       if (playerId === this._selectedPlayer) {
         this._syncMatchTipVisuals(matchId);
         this._resetTipSaveBadge(matchId);
@@ -3100,12 +3136,26 @@ class WmTippspielCard extends HTMLElement {
       }
     } catch (err) {
       console.error("[wm-tippspiel-card] clear_tip failed:", err);
-      this._setTipSaveStatus(matchId, "error");
       const msg = String(err?.message || err || "");
+      if (msg.includes("Kein gespeicherter Tipp")) {
+        const playerDrafts = this._draftTipsForPlayer(playerId);
+        delete playerDrafts[matchId];
+        this._clearTipDirty(playerId, matchId);
+        if (playerId === this._selectedPlayer) {
+          this._resetTipSaveBadge(matchId);
+          this._syncMatchTipVisuals(matchId);
+        }
+        return;
+      }
+      if (playerId === this._selectedPlayer) {
+        this._setTipSaveStatus(matchId, "error");
+      }
       const hint = msg.includes("clear_tip") || msg.includes("not found") || msg.includes("Service")
         ? " Home Assistant neu laden (Integration-Update)."
         : "";
-      this._showToast(`Tipp konnte nicht gelöscht werden: ${msg}${hint}`, "error");
+      if (!silent) {
+        this._showToast(`Tipp konnte nicht gelöscht werden: ${msg}${hint}`, "error");
+      }
     }
   }
 

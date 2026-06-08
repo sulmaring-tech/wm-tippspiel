@@ -211,6 +211,18 @@ class WmTippspielStore:
         self._purge_orphan_tips()
         return True
 
+    @staticmethod
+    def _resolve_tip_match_key(player_tips: dict, match_id: str) -> str | None:
+        if not player_tips:
+            return None
+        if match_id in player_tips:
+            return match_id
+        mid = str(match_id)
+        for key in player_tips:
+            if str(key) == mid:
+                return key
+        return None
+
     def set_tip(self, player_id: str, match_id: str, home: int, away: int) -> None:
         if not any(p.get("id") == player_id for p in self.get_players()):
             raise ValueError(f"Unbekannter Spieler: {player_id}")
@@ -232,9 +244,10 @@ class WmTippspielStore:
             raise ValueError("Tippabgabe geschlossen – Anpfiff bereits erfolgt.")
         tips = self._data.setdefault("tips", {})
         player_tips = tips.get(player_id)
-        if not player_tips or match_id not in player_tips:
+        resolved = self._resolve_tip_match_key(player_tips or {}, match_id)
+        if not resolved:
             return False
-        del player_tips[match_id]
+        del player_tips[resolved]
         if not player_tips:
             tips.pop(player_id, None)
         return True

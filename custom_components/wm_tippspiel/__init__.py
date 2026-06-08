@@ -126,7 +126,9 @@ def _register_services(hass: HomeAssistant) -> None:
         store = get_store(hass, call.data.get("entry_id"))
         try:
             if not store.clear_tip(call.data[ATTR_PLAYER_ID], call.data[ATTR_MATCH_ID]):
-                return
+                raise ValueError(
+                    f"Kein gespeicherter Tipp für Spiel: {call.data[ATTR_MATCH_ID]}"
+                )
         except ValueError as err:
             raise HomeAssistantError(str(err)) from err
         await store.async_save()
