@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.9.5";
+const WM_TIPPSPIEL_CARD_VERSION = "1.9.6";
 const AUTO_SAVE_DELAY_MS = 400;
 const MATCH_TIP_STATUS_CLASSES = [
   "tip-status-saved",
@@ -3338,6 +3338,7 @@ class WmTippspielCard extends HTMLElement {
         .team-chip { font-size: 0.78rem; }
         .group-filter { grid-template-columns: repeat(6, minmax(0, 1fr)); }
         .group-tables { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+        .group-matches-grid { grid-template-columns: 1fr; }
         .modal-overlay { padding: 12px; align-items: flex-end; }
         .modal-card { max-height: min(90dvh, 100%); border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
         .match-row-compact .teams-inline,
