@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.9.3";
+const WM_TIPPSPIEL_CARD_VERSION = "1.9.4";
 const AUTO_SAVE_DELAY_MS = 400;
 const MATCH_TIP_STATUS_CLASSES = [
   "tip-status-saved",
@@ -2789,7 +2789,7 @@ class WmTippspielCard extends HTMLElement {
       }
       .podium-block-empty { opacity: 0.35; }
       .podium-slot-empty .podium-block { margin-top: 72px; }
-      .podium-rank { font-size: 1.25rem; font-weight: 800; }
+      .podium-rank { font-size: 1.25rem; font-weight: 800; color: #000; }
       .standings-table-wrap {
         flex: 1;
         min-width: 0;
