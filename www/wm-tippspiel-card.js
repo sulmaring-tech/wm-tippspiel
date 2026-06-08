@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.9.2";
+const WM_TIPPSPIEL_CARD_VERSION = "1.9.3";
 const AUTO_SAVE_DELAY_MS = 400;
 const MATCH_TIP_STATUS_CLASSES = [
   "tip-status-saved",
@@ -3048,6 +3048,38 @@ class WmTippspielCard extends HTMLElement {
       .match-detail-modal-body .match-card {
         margin-bottom: 0;
       }
+      .match-detail-modal-body .teams {
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        align-items: center;
+        gap: 10px;
+      }
+      .match-detail-modal-body .team {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        align-items: flex-start;
+        text-align: left;
+        min-width: 0;
+      }
+      .match-detail-modal-body .team.away {
+        align-items: flex-end;
+        text-align: right;
+      }
+      .match-detail-modal-body .team:not(.away) .team-flag,
+      .match-detail-modal-body .team:not(.away) .team-name,
+      .match-detail-modal-body .team.away .team-flag,
+      .match-detail-modal-body .team.away .team-name {
+        order: initial;
+      }
+      .match-detail-modal-body .team.away .team-flag-img {
+        margin-left: 0;
+      }
+      .match-detail-modal-body .team-name {
+        overflow: visible;
+        text-overflow: unset;
+        white-space: normal;
+      }
       .group-chip.active {
         background: var(--wm-accent);
         color: #0f1419;
@@ -3301,35 +3333,39 @@ class WmTippspielCard extends HTMLElement {
         .match-row-compact .teams-inline {
           font-size: 0.7rem;
         }
-        .match-row-compact .team-side.home,
-        .match .team:not(.away) {
+        .match-row-compact .team-side.home {
           justify-content: flex-end;
         }
-        .match-row-compact .team-side.away,
-        .match .team.away {
+        .match-row-compact .team-side.away {
           justify-content: flex-start;
-          align-items: center;
-          text-align: left;
         }
-        .match .team {
+        .match.compact .team {
           flex-direction: row;
           align-items: center;
           gap: 4px;
           min-width: 0;
         }
-        .match .team:not(.away) .team-flag {
+        .match.compact .team:not(.away) {
+          justify-content: flex-end;
+        }
+        .match.compact .team.away {
+          justify-content: flex-start;
+          align-items: center;
+          text-align: left;
+        }
+        .match.compact .team:not(.away) .team-flag {
           order: 2;
           flex-shrink: 0;
         }
-        .match .team:not(.away) .team-name {
+        .match.compact .team:not(.away) .team-name {
           order: 1;
           text-align: right;
         }
-        .match .team.away .team-flag {
+        .match.compact .team.away .team-flag {
           order: 1;
           flex-shrink: 0;
         }
-        .match .team.away .team-name {
+        .match.compact .team.away .team-name {
           order: 2;
           text-align: left;
         }
