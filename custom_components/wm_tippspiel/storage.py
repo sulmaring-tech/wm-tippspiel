@@ -225,18 +225,31 @@ class WmTippspielStore:
         return None
 
     def set_tip(self, player_id: str, match_id: str, home: int, away: int) -> None:
-        if not any(p.get("id") == player_id for p in self.get_players()):
+        resolved_player = self._resolve_player_key(self.get_players(), player_id)
+        if not resolved_player:
             raise ValueError(f"Unbekannter Spieler: {player_id}")
         match = self.get_match(match_id)
         if not match:
             raise ValueError(f"Unbekanntes Spiel: {match_id}")
         if is_past_kickoff(match.get("kickoff")):
             raise ValueError("Tippabgabe geschlossen – Anpfiff bereits erfolgt.")
-        player_tips = self._data.setdefault("tips", {}).setdefault(player_id, {})
+        player_tips = self._data.setdefault("tips", {}).setdefault(resolved_player, {})
         player_tips[str(match["id"])] = {"home": int(home), "away": int(away)}
 
+    @staticmethod
+    def _resolve_player_key(players: list[dict], player_id: str) -> str | None:
+        if not players:
+            return None
+        for player in players:
+            pid = player.get("id")
+            if pid == player_id or str(pid) == str(player_id):
+                return str(pid)
+        return None
+
     def clear_tip(self, player_id: str, match_id: str) -> bool:
-        if not any(p.get("id") == player_id for p in self.get_players()):
+        players = self.get_players()
+        resolved_player = self._resolve_player_key(players, player_id)
+        if not resolved_player:
             raise ValueError(f"Unbekannter Spieler: {player_id}")
         match = self.get_match(match_id)
         if not match:
@@ -244,13 +257,21 @@ class WmTippspielStore:
         if is_past_kickoff(match.get("kickoff")):
             raise ValueError("Tippabgabe geschlossen – Anpfiff bereits erfolgt.")
         tips = self._data.setdefault("tips", {})
-        player_tips = tips.get(player_id)
+        player_tips = tips.get(resolved_player) or tips.get(player_id)
+        if player_tips is None:
+            for key in list(tips):
+                if str(key) == str(player_id):
+                    player_tips = tips[key]
+                    resolved_player = str(key)
+                    break
         resolved = self._resolve_tip_match_key(player_tips or {}, match_id)
         if not resolved:
             return False
         del player_tips[resolved]
         if not player_tips:
-            tips.pop(player_id, None)
+            tips.pop(resolved_player, None)
+            if player_id != resolved_player:
+                tips.pop(player_id, None)
         return True
 
     def set_result(self, match_id: str, home: int, away: int) -> None:

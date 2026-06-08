@@ -9,7 +9,7 @@ import voluptuous as vol
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse, callback
+from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
@@ -125,7 +125,7 @@ def _register_services(hass: HomeAssistant) -> None:
         await store.async_save()
         _async_notify(hass)
 
-    async def _clear_tip(call: ServiceCall) -> dict[str, bool]:
+    async def _clear_tip(call: ServiceCall) -> None:
         store = get_store(hass, call.data.get("entry_id"))
         try:
             deleted = store.clear_tip(
@@ -133,10 +133,12 @@ def _register_services(hass: HomeAssistant) -> None:
             )
         except ValueError as err:
             raise HomeAssistantError(str(err)) from err
-        if deleted:
-            await store.async_save()
-            _async_notify(hass)
-        return {"deleted": deleted}
+        if not deleted:
+            raise HomeAssistantError(
+                f"Kein gespeicherter Tipp für Spiel: {call.data[ATTR_MATCH_ID]}"
+            )
+        await store.async_save()
+        _async_notify(hass)
 
     async def _set_result(call: ServiceCall) -> None:
         store = get_store(hass, call.data.get("entry_id"))
@@ -236,7 +238,6 @@ def _register_services(hass: HomeAssistant) -> None:
                 vol.Required(ATTR_MATCH_ID): cv.string,
             }
         ),
-        supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(
         DOMAIN,

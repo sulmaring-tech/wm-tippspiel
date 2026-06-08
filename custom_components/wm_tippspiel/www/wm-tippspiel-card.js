@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.6.18";
+const WM_TIPPSPIEL_CARD_VERSION = "1.6.19";
 const AUTO_SAVE_DELAY_MS = 400;
 const MATCH_TIP_STATUS_CLASSES = [
   "tip-status-saved",
@@ -1621,21 +1621,17 @@ class WmTippspielCard extends HTMLElement {
     return null;
   }
 
-  async _callService(service, data = {}, returnResponse = false) {
+  async _callService(service, data = {}) {
     const payload = { ...data };
     const entryId = this._entryId();
     if (entryId && payload.entry_id == null) payload.entry_id = entryId;
-    if (returnResponse) {
-      return await this._hass.callService(
-        "wm_tippspiel",
-        service,
-        payload,
-        {},
-        true,
-        true
-      );
-    }
     await this._hass.callService("wm_tippspiel", service, payload);
+  }
+
+  _serviceErrorMessage(err) {
+    if (!err) return "Unbekannter Fehler";
+    if (typeof err === "string") return err;
+    return String(err.message || err.body?.message || err.error?.message || err.code || err);
   }
 
   _styles() {
@@ -3177,24 +3173,10 @@ class WmTippspielCard extends HTMLElement {
       this._setTipSaveStatus(matchId, "saving");
     }
     try {
-      const response = await this._callService(
-        "clear_tip",
-        {
-          player_id: playerId,
-          match_id: matchId,
-        },
-        true
-      );
-      const deleted = response?.response?.deleted === true;
-      if (!deleted) {
-        if (playerId === this._selectedPlayer) {
-          this._setTipSaveStatus(matchId, "error");
-        }
-        if (!silent) {
-          this._showToast("Tipp konnte nicht gelöscht werden.", "error");
-        }
-        return;
-      }
+      await this._callService("clear_tip", {
+        player_id: playerId,
+        match_id: matchId,
+      });
       this._applyClearedTip(matchId, playerId);
       const playerDrafts = this._draftTipsForPlayer(playerId);
       delete playerDrafts[matchId];
@@ -3208,17 +3190,19 @@ class WmTippspielCard extends HTMLElement {
         }
       }
     } catch (err) {
-      console.error("[wm-tippspiel-card] clear_tip failed:", err);
+      const msg = this._serviceErrorMessage(err);
+      console.warn("[wm-tippspiel-card] clear_tip failed:", msg, {
+        matchId,
+        playerId,
+        err,
+      });
       if (playerId === this._selectedPlayer) {
         this._setTipSaveStatus(matchId, "error");
       }
-      const msg = String(err?.message || err || "");
       const hint = msg.includes("clear_tip") || msg.includes("not found") || msg.includes("Service")
         ? " Home Assistant neu laden (Integration-Update)."
         : "";
-      if (!silent) {
-        this._showToast(`Tipp konnte nicht gelöscht werden: ${msg}${hint}`, "error");
-      }
+      this._showToast(`Tipp konnte nicht gelöscht werden: ${msg}${hint}`, "error");
     }
   }
 
