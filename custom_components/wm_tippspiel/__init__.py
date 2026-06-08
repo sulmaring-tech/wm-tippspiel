@@ -10,6 +10,7 @@ from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
@@ -112,9 +113,10 @@ def _register_services(hass: HomeAssistant) -> None:
         return
 
     async def _set_tip(call: ServiceCall) -> None:
-        store = get_store(hass, call.data.get("entry_id"))
+        entry_id = call.data.get("entry_id")
+        store = get_store(hass, entry_id)
         try:
-            store.set_tip(
+            await store.async_set_tip(
                 call.data[ATTR_PLAYER_ID],
                 call.data[ATTR_MATCH_ID],
                 call.data[ATTR_HOME],
@@ -122,13 +124,13 @@ def _register_services(hass: HomeAssistant) -> None:
             )
         except ValueError as err:
             raise HomeAssistantError(str(err)) from err
-        await store.async_save()
-        _async_notify(hass)
+        await _async_refresh_entry(hass, entry_id)
 
     async def _clear_tip(call: ServiceCall) -> None:
-        store = get_store(hass, call.data.get("entry_id"))
+        entry_id = call.data.get("entry_id")
+        store = get_store(hass, entry_id)
         try:
-            deleted = store.clear_tip(
+            deleted = await store.async_clear_tip(
                 call.data[ATTR_PLAYER_ID], call.data[ATTR_MATCH_ID]
             )
         except ValueError as err:
@@ -137,8 +139,7 @@ def _register_services(hass: HomeAssistant) -> None:
             raise HomeAssistantError(
                 f"Kein gespeicherter Tipp für Spiel: {call.data[ATTR_MATCH_ID]}"
             )
-        await store.async_save()
-        _async_notify(hass)
+        await _async_refresh_entry(hass, entry_id)
 
     async def _set_result(call: ServiceCall) -> None:
         store = get_store(hass, call.data.get("entry_id"))
@@ -302,3 +303,30 @@ def _register_services(hass: HomeAssistant) -> None:
 @callback
 def _async_notify(hass: HomeAssistant) -> None:
     hass.bus.async_fire(f"{DOMAIN}_updated")
+
+
+async def _async_refresh_entry(hass: HomeAssistant, entry_id: str | None) -> None:
+    """Sensoren nach Tipp-/Ergebnisänderung sofort neu in den State schreiben."""
+    if not entry_id:
+        entries = hass.config_entries.async_entries(DOMAIN)
+        entry_id = entries[0].entry_id if entries else None
+    if not entry_id:
+        return
+    _async_notify(hass)
+    component = hass.data.get("entity_components", {}).get("sensor")
+    if component is None:
+        return
+    registry = er.async_get(hass)
+    store = get_store(hass, entry_id)
+    unique_ids = [f"{entry_id}_leaderboard"]
+    for player in store.get_players():
+        player_id = player.get("id")
+        if player_id:
+            unique_ids.append(f"{entry_id}_player_{player_id}")
+    for unique_id in unique_ids:
+        entity_id = registry.async_get_entity_id("sensor", DOMAIN, unique_id)
+        if not entity_id:
+            continue
+        entity = component.get_entity(entity_id)
+        if entity is not None:
+            entity.async_write_ha_state()

@@ -172,7 +172,7 @@ class WmTippspielPlayerSensor(WmTippspielBaseSensor):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        tips = self._store.data.get("tips", {}).get(self._player["id"], {})
+        tips = self._store.get_player_tips(self._player["id"])
         standings = {
             row["id"]: row for row in self._store.compute_standings()
         }.get(self._player["id"], {})

@@ -224,6 +224,21 @@ class WmTippspielStore:
                 return key
         return None
 
+    def get_player_tips(self, player_id: str) -> dict[str, Any]:
+        tips_root = self._data.get("tips", {})
+        if not isinstance(tips_root, dict):
+            return {}
+        resolved = self._resolve_player_key(self.get_players(), player_id) or str(
+            player_id
+        )
+        merged: dict[str, Any] = {}
+        for key, player_tips in tips_root.items():
+            if str(key) in {str(resolved), str(player_id)} and isinstance(
+                player_tips, dict
+            ):
+                merged.update(player_tips)
+        return merged
+
     def set_tip(self, player_id: str, match_id: str, home: int, away: int) -> None:
         resolved_player = self._resolve_player_key(self.get_players(), player_id)
         if not resolved_player:
@@ -233,8 +248,19 @@ class WmTippspielStore:
             raise ValueError(f"Unbekanntes Spiel: {match_id}")
         if is_past_kickoff(match.get("kickoff")):
             raise ValueError("Tippabgabe geschlossen – Anpfiff bereits erfolgt.")
-        player_tips = self._data.setdefault("tips", {}).setdefault(resolved_player, {})
+        tips = self._data.setdefault("tips", {})
+        for key in list(tips):
+            if str(key) in {str(resolved_player), str(player_id)} and key != resolved_player:
+                tips.pop(key, None)
+        player_tips = tips.setdefault(resolved_player, {})
         player_tips[str(match["id"])] = {"home": int(home), "away": int(away)}
+
+    async def async_set_tip(
+        self, player_id: str, match_id: str, home: int, away: int
+    ) -> None:
+        async with self._lock:
+            self.set_tip(player_id, match_id, home, away)
+            await self._store.async_save(self._data)
 
     @staticmethod
     def _resolve_player_key(players: list[dict], player_id: str) -> str | None:
@@ -257,22 +283,33 @@ class WmTippspielStore:
         if is_past_kickoff(match.get("kickoff")):
             raise ValueError("Tippabgabe geschlossen – Anpfiff bereits erfolgt.")
         tips = self._data.setdefault("tips", {})
-        player_tips = tips.get(resolved_player) or tips.get(player_id)
-        if player_tips is None:
-            for key in list(tips):
-                if str(key) == str(player_id):
-                    player_tips = tips[key]
-                    resolved_player = str(key)
-                    break
-        resolved = self._resolve_tip_match_key(player_tips or {}, match_id)
-        if not resolved:
-            return False
-        del player_tips[resolved]
-        if not player_tips:
-            tips.pop(resolved_player, None)
-            if player_id != resolved_player:
-                tips.pop(player_id, None)
-        return True
+        deleted = False
+        player_keys = {
+            str(key)
+            for key in tips
+            if str(key) in {str(resolved_player), str(player_id)}
+        }
+        for key in list(tips):
+            if str(key) not in player_keys:
+                continue
+            player_tips = tips.get(key)
+            if not isinstance(player_tips, dict):
+                continue
+            resolved = self._resolve_tip_match_key(player_tips, match_id)
+            if not resolved:
+                continue
+            del player_tips[resolved]
+            deleted = True
+            if not player_tips:
+                tips.pop(key, None)
+        return deleted
+
+    async def async_clear_tip(self, player_id: str, match_id: str) -> bool:
+        async with self._lock:
+            deleted = self.clear_tip(player_id, match_id)
+            if deleted:
+                await self._store.async_save(self._data)
+            return deleted
 
     def set_result(self, match_id: str, home: int, away: int) -> None:
         if not self.get_match(match_id):
