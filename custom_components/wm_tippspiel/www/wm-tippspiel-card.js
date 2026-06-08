@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.6.17";
+const WM_TIPPSPIEL_CARD_VERSION = "1.6.18";
 const AUTO_SAVE_DELAY_MS = 400;
 const MATCH_TIP_STATUS_CLASSES = [
   "tip-status-saved",
@@ -1625,13 +1625,17 @@ class WmTippspielCard extends HTMLElement {
     const payload = { ...data };
     const entryId = this._entryId();
     if (entryId && payload.entry_id == null) payload.entry_id = entryId;
-    return await this._hass.callService(
-      "wm_tippspiel",
-      service,
-      payload,
-      undefined,
-      returnResponse
-    );
+    if (returnResponse) {
+      return await this._hass.callService(
+        "wm_tippspiel",
+        service,
+        payload,
+        {},
+        true,
+        true
+      );
+    }
+    await this._hass.callService("wm_tippspiel", service, payload);
   }
 
   _styles() {
