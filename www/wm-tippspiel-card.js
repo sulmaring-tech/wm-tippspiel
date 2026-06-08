@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.9.0";
+const WM_TIPPSPIEL_CARD_VERSION = "1.9.1";
 const AUTO_SAVE_DELAY_MS = 400;
 const MATCH_TIP_STATUS_CLASSES = [
   "tip-status-saved",
@@ -904,13 +904,18 @@ class WmTippspielCard extends HTMLElement {
       }
       const calendarEvent = ev.target.closest("[data-calendar-event]");
       if (calendarEvent) {
-        this._calendarSelectedMatchId = calendarEvent.getAttribute("data-calendar-event");
+        this._matchDetailModalId = calendarEvent.getAttribute("data-calendar-event");
         this._renderShell();
         return;
       }
-      const calendarClose = ev.target.closest("[data-action=calendar-close]");
-      if (calendarClose) {
-        this._calendarSelectedMatchId = null;
+      const modalClose = ev.target.closest("[data-action=modal-close]");
+      if (modalClose) {
+        this._matchDetailModalId = null;
+        this._renderShell();
+        return;
+      }
+      if (ev.target.getAttribute?.("data-action") === "modal-close-overlay") {
+        this._matchDetailModalId = null;
         this._renderShell();
         return;
       }
@@ -981,6 +986,11 @@ class WmTippspielCard extends HTMLElement {
     );
 
     this.shadowRoot.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape" && this._matchDetailModalId) {
+        this._matchDetailModalId = null;
+        this._renderShell();
+        return;
+      }
       if (ev.key !== "Enter") return;
       const tipInput = ev.target.closest('.score-input[data-kind="tip"]');
       if (tipInput && this._config.auto_save_tips === false) {
@@ -1695,8 +1705,8 @@ class WmTippspielCard extends HTMLElement {
     return { minKey: monthKey(minY, minM - 1), maxKey: monthKey(maxY, maxM - 1) };
   }
 
-  _createMatchRenderer(playerTips, results, playerId) {
-    const compact = this._config.compact_mode !== false;
+  _createMatchRenderer(playerTips, results, playerId, { compact: compactOverride } = {}) {
+    const compact = compactOverride ?? this._config.compact_mode !== false;
     return (m) => {
       const ctx = this._buildMatchTipContext(m, playerTips, results, playerId);
       const { locked, homeVal, awayVal, status } = ctx;
@@ -1716,15 +1726,32 @@ class WmTippspielCard extends HTMLElement {
     return false;
   }
 
-  _renderAccordion(id, title, count, bodyHtml) {
+  _renderAccordion(id, title, count, bodyHtml, bodyClass = "") {
     const open = this._isAccordionOpen(id);
+    const bodyCls = bodyClass ? ` ${bodyClass}` : "";
     return `<details class="accordion" data-acc-id="${escapeHtml(id)}"${open ? " open" : ""}>
       <summary>
         <span class="acc-title">${escapeHtml(title)}</span>
         <span class="acc-count">${count} Spiele</span>
       </summary>
-      <div class="accordion-body">${bodyHtml}</div>
+      <div class="accordion-body${bodyCls}">${bodyHtml}</div>
     </details>`;
+  }
+
+  _renderMatchDetailModal(matches, playerTips, results, playerId) {
+    if (!this._matchDetailModalId || !playerId) return "";
+    const match = matches.find((m) => m.id === this._matchDetailModalId);
+    if (!match) return "";
+    const renderMatch = this._createMatchRenderer(playerTips, results, playerId, { compact: false });
+    return `<div class="modal-overlay" data-action="modal-close-overlay" role="presentation">
+      <div class="modal-card match-detail-modal" role="dialog" aria-modal="true" aria-labelledby="match-detail-modal-title">
+        <header class="modal-header">
+          <h2 id="match-detail-modal-title">Spieldetails</h2>
+          <button type="button" class="modal-close" data-action="modal-close" aria-label="Schließen">×</button>
+        </header>
+        <div class="match-detail-modal-body">${renderMatch(match)}</div>
+      </div>
+    </div>`;
   }
 
   _renderMatchAccordions(matches, renderMatchFn, selectedGroups = null) {
@@ -1740,7 +1767,8 @@ class WmTippspielCard extends HTMLElement {
         `group-${g}`,
         `Gruppe ${g}`,
         list.length,
-        list.map(renderMatchFn).join("")
+        list.map(renderMatchFn).join(""),
+        "group-matches-grid"
       );
     }
 
@@ -1790,7 +1818,8 @@ class WmTippspielCard extends HTMLElement {
           section.id,
           section.label,
           section.list.length,
-          section.list.map(renderMatchFn).join("")
+          section.list.map(renderMatchFn).join(""),
+          "group-matches-grid"
         )
       )
       .join("");
@@ -1817,7 +1846,8 @@ class WmTippspielCard extends HTMLElement {
           `team-${team}`,
           team,
           list.length,
-          list.map(renderMatchFn).join("")
+          list.map(renderMatchFn).join(""),
+          "group-matches-grid"
         );
       })
       .join("");
@@ -1931,20 +1961,6 @@ class WmTippspielCard extends HTMLElement {
       })
       .join("");
 
-    let detailHtml = "";
-    if (this._calendarSelectedMatchId) {
-      const selected = matches.find((m) => m.id === this._calendarSelectedMatchId);
-      if (selected) {
-        detailHtml = `<div class="calendar-match-detail">
-          <div class="calendar-match-detail-head">
-            <strong>Spieldetails</strong>
-            <button type="button" class="btn-secondary calendar-close-btn" data-action="calendar-close">Schließen</button>
-          </div>
-          ${this._createMatchRenderer(playerTips, results, playerId)(selected)}
-        </div>`;
-      }
-    }
-
     return `<section class="calendar-panel">
       <h2>Spielkalender</h2>
       <p class="calendar-panel-hint">Alle Anstoßzeiten in MESZ. Auf ein Spiel tippen für Details und Tippeingabe.</p>
@@ -1959,7 +1975,6 @@ class WmTippspielCard extends HTMLElement {
         </div>
         <div class="calendar-grid" role="grid" aria-label="Spielkalender ${escapeHtml(monthLabel)}">${grid}</div>
       </div>
-      ${detailHtml}
     </section>`;
   }
 
@@ -2218,7 +2233,7 @@ class WmTippspielCard extends HTMLElement {
         }
       }
       @container wm-body (min-width: 1100px) {
-        .body[data-match-cols="auto"] .accordion-body {
+        .body[data-match-cols="auto"] .accordion-body:not(.group-matches-grid) {
           grid-template-columns: repeat(3, minmax(0, 1fr));
         }
       }
@@ -2951,20 +2966,85 @@ class WmTippspielCard extends HTMLElement {
         }
       }
       .group-filter {
-        display: flex;
-        flex-wrap: wrap;
+        display: grid;
+        grid-template-columns: repeat(12, minmax(0, 1fr));
         gap: 8px;
+        width: 100%;
         margin-bottom: 20px;
       }
       .group-chip {
-        width: 40px;
-        height: 40px;
+        width: 100%;
+        min-height: 40px;
         border-radius: 8px;
         border: 1px solid var(--wm-border);
         background: var(--wm-bg-card);
         color: var(--wm-text-muted);
         cursor: pointer;
         font-weight: 600;
+      }
+      .group-matches-grid {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 12px;
+      }
+      .group-matches-grid .match,
+      .group-matches-grid .match-card {
+        margin-bottom: 0;
+      }
+      .modal-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: rgba(8, 12, 18, 0.72);
+        backdrop-filter: blur(4px);
+      }
+      .modal-card {
+        width: min(520px, 100%);
+        max-height: min(90vh, 100%);
+        overflow-y: auto;
+        background: var(--wm-bg-card);
+        border: 1px solid var(--wm-border);
+        border-radius: var(--wm-radius);
+        box-shadow: var(--wm-shadow);
+      }
+      .modal-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 20px 20px 12px;
+      }
+      .modal-header h2 {
+        margin: 0;
+        font-size: 1.15rem;
+        color: var(--wm-accent);
+        line-height: 1.3;
+      }
+      .modal-close {
+        flex-shrink: 0;
+        width: 32px;
+        height: 32px;
+        border: none;
+        border-radius: 8px;
+        background: var(--wm-bg-elevated);
+        color: var(--wm-text-muted);
+        font-size: 1.4rem;
+        line-height: 1;
+        cursor: pointer;
+      }
+      .modal-close:hover {
+        color: var(--wm-text);
+        background: var(--wm-border);
+      }
+      .match-detail-modal-body {
+        padding: 0 16px 16px;
+      }
+      .match-detail-modal-body .match,
+      .match-detail-modal-body .match-card {
+        margin-bottom: 0;
       }
       .group-chip.active {
         background: var(--wm-accent);
@@ -3162,24 +3242,6 @@ class WmTippspielCard extends HTMLElement {
         font-weight: 700;
         color: var(--wm-text-muted);
       }
-      .calendar-match-detail {
-        margin-top: 20px;
-        padding-top: 16px;
-        border-top: 1px solid var(--wm-border);
-      }
-      .calendar-match-detail-head {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        margin-bottom: 12px;
-      }
-      .calendar-close-btn {
-        width: auto;
-        margin-top: 0;
-        padding: 6px 12px;
-        font-size: 0.78rem;
-      }
       .empty {
         text-align: center;
         padding: 28px 16px;
@@ -3227,7 +3289,9 @@ class WmTippspielCard extends HTMLElement {
         .calendar-grid { grid-auto-rows: minmax(72px, auto); }
         .calendar-day { min-height: 72px; }
         .team-chip { font-size: 0.78rem; }
-        .group-chip { width: 36px; height: 36px; }
+        .group-filter { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+        .modal-overlay { padding: 12px; align-items: flex-end; }
+        .modal-card { max-height: min(90dvh, 100%); border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
         .match-row-compact .teams-inline,
         .match .teams {
           grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
@@ -3336,6 +3400,18 @@ class WmTippspielCard extends HTMLElement {
     }
 
     const subtitle = cfg.subtitle || "Fußball-WM 2026 · Tipprunde";
+    let modalHtml = "";
+    if (!missing && this._matchDetailModalId) {
+      const { players, matches, tips, results } = this._data();
+      const playerId = this._selectedPlayer;
+      const playerTips = tips[playerId] || {};
+      modalHtml = this._renderMatchDetailModal(
+        this._filteredMatches(matches),
+        playerTips,
+        results,
+        playerId
+      );
+    }
     this.shadowRoot.innerHTML = `
       <style>${this._styles()}</style>
       <ha-card>
@@ -3373,14 +3449,15 @@ class WmTippspielCard extends HTMLElement {
               )
               .join("")}
           </nav>
-          <main class="body app-main" data-match-cols="${this._matchColumns()}">${body}</main>
+          <main class="body app-main" data-active-tab="${escapeHtml(this._tab)}" data-match-cols="${this._matchColumns()}">${body}</main>
           ${cfg.show_rules !== false ? `<div class="rules">⚽ 3 Punkte exakt · 1 Punkt richtige Tendenz</div>` : ""}
           <div class="version-badge">v${WM_TIPPSPIEL_CARD_VERSION}</div>
+          ${modalHtml}
         </div>
       </ha-card>
     `;
 
-    if (this._tab === "tips" || this._tab === "bracket" || this._tab === "calendar") {
+    if (this._tab === "tips" || this._tab === "bracket" || this._tab === "calendar" || this._matchDetailModalId) {
       this.shadowRoot.querySelectorAll("[data-action=save-tip]").forEach((btn) => {
         this._syncTipSaveButton(btn.getAttribute("data-match"));
       });
