@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.6.3";
+const WM_TIPPSPIEL_CARD_VERSION = "1.6.4";
 
 const ALL_GROUPS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 const KNOCKOUT_ROUNDS = [
@@ -18,7 +18,6 @@ const TABS = [
   { id: "tips", label: "Vorrunde", icon: "mdi:soccer" },
   { id: "bracket", label: "KO-Runde", icon: "mdi:tournament", knockout: true },
   { id: "standings", label: "Rangliste", icon: "mdi:podium-gold" },
-  { id: "players", label: "Spieler", icon: "mdi:account-group" },
 ];
 
 /** ISO-3166 Codes für flagcdn.com (Emoji-Flaggen zeigen unter Windows oft MX/ZA statt 🇲🇽). */
@@ -57,6 +56,42 @@ const TEAM_ISO = {
   Tschechien: "cz",
 };
 
+/** FIFA-typische 3-Buchstaben-Kürzel für kompakte Mobile-Ansicht. */
+const TEAM_ABBR = {
+  Mexiko: "MEX",
+  "Südafrika": "RSA",
+  "Südkorea": "KOR",
+  Kanada: "CAN",
+  Katar: "QAT",
+  Schweiz: "SUI",
+  Brasilien: "BRA",
+  Marokko: "MAR",
+  Haiti: "HTI",
+  Schottland: "SCO",
+  USA: "USA",
+  Paraguay: "PAR",
+  Australien: "AUS",
+  Deutschland: "GER",
+  Curaçao: "CUW",
+  "Elfenbeinküste": "CIV",
+  Ecuador: "ECU",
+  Niederlande: "NED",
+  Japan: "JPN",
+  Tunesien: "TUN",
+  Belgien: "BEL",
+  Ägypten: "EGY",
+  Iran: "IRN",
+  Neuseeland: "NZL",
+  Spanien: "ESP",
+  "Kap Verde": "CPV",
+  "Saudi-Arabien": "KSA",
+  Uruguay: "URU",
+  "Bosnien und Herzegowina": "BIH",
+  Schweden: "SWE",
+  Türkei: "TUR",
+  Tschechien: "CZE",
+};
+
 function escapeHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({
     "&": "&amp;",
@@ -75,6 +110,23 @@ function teamFlag(name) {
   }
   const src = `${FLAG_CDN}/${iso}.png`;
   return `<img class="team-flag-img" src="${src}" alt="${label}" title="${label}" loading="lazy" />`;
+}
+
+function teamAbbr(name) {
+  if (!name) return "?";
+  if (TEAM_ABBR[name]) return TEAM_ABBR[name];
+  return String(name).slice(0, 3).toUpperCase();
+}
+
+function teamLabel(name) {
+  const full = escapeHtml(name || "Team");
+  const short = escapeHtml(teamAbbr(name));
+  return `<span class="team-label" title="${full}"><span class="team-full">${full}</span><span class="team-short">${short}</span></span>`;
+}
+
+function teamDisplayName(name) {
+  if (!name || isBracketPlaceholder(name)) return escapeHtml(name || "");
+  return teamLabel(name);
 }
 
 function formatKickoff(iso) {
@@ -186,6 +238,7 @@ class WmTippspielCardEditor extends HTMLElement {
   setConfig(config) {
     this._config = defaultConfig(config || {});
     this._newPlayerName = "";
+    this._pendingRemovePlayerId = null;
     if (this._hass) this._render();
   }
 
@@ -197,6 +250,24 @@ class WmTippspielCardEditor extends HTMLElement {
   _players() {
     const st = this._hass?.states?.[this._config.entity];
     return st?.attributes?.players || [];
+  }
+
+  _entryId() {
+    const entityId = this._config?.entity;
+    const st = this._hass?.states?.[entityId];
+    if (st?.attributes?.entry_id) return st.attributes.entry_id;
+    const uniqueId = this._hass?.entities?.[entityId]?.unique_id || "";
+    if (uniqueId.endsWith("_leaderboard")) {
+      return uniqueId.slice(0, -"_leaderboard".length);
+    }
+    return null;
+  }
+
+  async _callService(service, data = {}) {
+    const payload = { ...data };
+    const entryId = this._entryId();
+    if (entryId && payload.entry_id == null) payload.entry_id = entryId;
+    await this._hass.callService("wm_tippspiel", service, payload);
   }
 
   _notify() {
@@ -225,9 +296,24 @@ class WmTippspielCardEditor extends HTMLElement {
   async _addPlayer() {
     const name = (this._newPlayerName || "").trim();
     if (!name || !this._hass) return;
-    await this._hass.callService("wm_tippspiel", "add_player", { name });
+    await this._callService("add_player", { name });
     this._newPlayerName = "";
     this._render();
+  }
+
+  async _removePlayer(playerId) {
+    if (!playerId || !this._hass) return;
+    if (!this._config.admin) return;
+    try {
+      await this._callService("remove_player", { player_id: playerId });
+      this._pendingRemovePlayerId = null;
+      if (this._config.player_id === playerId) {
+        this._set("player_id", "");
+      }
+      this._render();
+    } catch (err) {
+      console.error("[wm-tippspiel-card-editor] remove_player failed:", err);
+    }
   }
 
   _editorSwitchValue(cfg, key) {
@@ -279,6 +365,22 @@ class WmTippspielCardEditor extends HTMLElement {
 
     this.querySelector("[data-action=add-player]")?.addEventListener("click", () => this._addPlayer());
 
+    this.querySelectorAll("[data-action=ed-remove-player]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        this._pendingRemovePlayerId = btn.getAttribute("data-player-id");
+        this._render();
+      });
+    });
+    this.querySelectorAll("[data-action=ed-confirm-remove]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        void this._removePlayer(btn.getAttribute("data-player-id"));
+      });
+    });
+    this.querySelector("[data-action=ed-cancel-remove]")?.addEventListener("click", () => {
+      this._pendingRemovePlayerId = null;
+      this._render();
+    });
+
     this.querySelectorAll("[data-group]").forEach((cb) => {
       cb.addEventListener("change", () => {
         this._toggleGroup(cb.getAttribute("data-group"));
@@ -308,6 +410,35 @@ class WmTippspielCardEditor extends HTMLElement {
   _render() {
     const cfg = this._config;
     const players = this._players();
+    const pendingId = this._pendingRemovePlayerId;
+
+    const playerList = players.length
+      ? players
+          .map((p) => {
+            if (pendingId === p.id) {
+              return `<div class="ed-player-row ed-player-confirm">
+                <div>
+                  <strong>${escapeHtml(p.name)}</strong> wirklich entfernen?
+                  <div class="ed-player-meta">Alle Tipps dieses Spielers werden gelöscht.</div>
+                </div>
+                <div class="ed-player-actions">
+                  <mwc-button dense data-action="ed-confirm-remove" data-player-id="${escapeHtml(p.id)}">Ja, löschen</mwc-button>
+                  <mwc-button dense data-action="ed-cancel-remove">Abbrechen</mwc-button>
+                </div>
+              </div>`;
+            }
+            return `<div class="ed-player-row">
+              <button type="button" class="ed-chip ${p.id === cfg.player_id ? "active" : ""}" data-player="${escapeHtml(p.id)}" title="Als Standard-Tipper wählen">${escapeHtml(p.name)}</button>
+              <span class="ed-player-meta">ID ${escapeHtml(p.id)}</span>
+              ${
+                cfg.admin
+                  ? `<mwc-button class="ed-remove" dense data-action="ed-remove-player" data-player-id="${escapeHtml(p.id)}">Entfernen</mwc-button>`
+                  : ""
+              }
+            </div>`;
+          })
+          .join("")
+      : `<p class="ed-empty">Noch keine Spieler – unten einen Namen hinzufügen.</p>`;
 
     this.innerHTML = `
       <div class="ed">
@@ -329,18 +460,9 @@ class WmTippspielCardEditor extends HTMLElement {
         </div>
 
         <div class="ed-section">
-          <div class="ed-title">Spieler</div>
-          <p class="ed-hint">Mitspieler werden in der Integration gespeichert und stehen auf allen Geräten zur Verfügung.</p>
-          ${
-            players.length
-              ? `<div class="ed-chips">${players
-                  .map(
-                    (p) =>
-                      `<span class="ed-chip ${p.id === cfg.player_id ? "active" : ""}" data-player="${escapeHtml(p.id)}" title="Als Standard-Tipper wählen">${escapeHtml(p.name)}</span>`
-                  )
-                  .join("")}</div>`
-              : `<p class="ed-empty">Noch keine Spieler – unten einen Namen hinzufügen.</p>`
-          }
+          <div class="ed-title">Spielerverwaltung</div>
+          <p class="ed-hint">Mitspieler werden in der Integration gespeichert und stehen auf allen Geräten zur Verfügung. Standard-Tipper per Klick auf den Namen wählen.</p>
+          <div class="ed-player-list">${playerList}</div>
           <div class="ed-add-row">
             <ha-textfield
               label="Neuer Spieler"
@@ -348,6 +470,7 @@ class WmTippspielCardEditor extends HTMLElement {
             ></ha-textfield>
             <mwc-button raised label="Hinzufügen" data-action="add-player"></mwc-button>
           </div>
+          ${!cfg.admin ? `<p class="ed-hint">Spieler entfernen ist nur mit aktiviertem Admin-Modus (unten bei Anzeige) möglich.</p>` : ""}
         </div>
 
         <div class="ed-section">
@@ -426,6 +549,40 @@ class WmTippspielCardEditor extends HTMLElement {
           margin-bottom: 10px;
         }
         .ed-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+        .ed-player-list {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          margin-bottom: 12px;
+        }
+        .ed-player-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+          padding: 8px 10px;
+          border-radius: 10px;
+          background: var(--card-background-color);
+          border: 1px solid var(--divider-color);
+        }
+        .ed-player-confirm {
+          border-color: rgba(244, 67, 54, 0.45);
+          background: rgba(244, 67, 54, 0.08);
+        }
+        .ed-player-meta {
+          font-size: 11px;
+          color: var(--secondary-text-color);
+          flex: 1;
+          min-width: 72px;
+        }
+        .ed-player-actions {
+          display: flex;
+          gap: 6px;
+          flex-wrap: wrap;
+        }
+        .ed-remove {
+          margin-left: auto;
+        }
         .ed-chip {
           padding: 6px 12px;
           border-radius: 999px;
@@ -433,6 +590,8 @@ class WmTippspielCardEditor extends HTMLElement {
           border: 1px solid var(--divider-color);
           font-size: 13px;
           cursor: pointer;
+          color: inherit;
+          font-family: inherit;
         }
         .ed-chip.active {
           border-color: var(--primary-color);
@@ -484,11 +643,9 @@ class WmTippspielCard extends HTMLElement {
     this._tab = this._tab || "tips";
     this._draftTips = this._draftTips || {};
     this._draftResults = this._draftResults || {};
-    this._newPlayerName = this._newPlayerName || "";
     this._openAccordions = this._openAccordions || new Set();
     this._autoSaveTimers = this._autoSaveTimers || {};
     this._tipSaveStatus = this._tipSaveStatus || {};
-    this._pendingRemovePlayerId = this._pendingRemovePlayerId || null;
     if (!this.shadowRoot) {
       this.attachShadow({ mode: "open" });
       this._bindEvents();
@@ -504,40 +661,6 @@ class WmTippspielCard extends HTMLElement {
       const tabBtn = ev.target.closest("[data-tab]");
       if (tabBtn) {
         this._tab = tabBtn.getAttribute("data-tab");
-        this._renderShell();
-        return;
-      }
-      const removePlayer = ev.target.closest("[data-action=remove-player]");
-      if (removePlayer) {
-        ev.preventDefault();
-        ev.stopPropagation();
-        this._pendingRemovePlayerId = removePlayer.getAttribute("data-player-id");
-        this._renderShell();
-        return;
-      }
-      const confirmRemove = ev.target.closest("[data-action=confirm-remove-player]");
-      if (confirmRemove) {
-        ev.preventDefault();
-        ev.stopPropagation();
-        void this._removePlayer(confirmRemove.getAttribute("data-player-id"));
-        return;
-      }
-      const cancelRemove = ev.target.closest("[data-action=cancel-remove-player]");
-      if (cancelRemove) {
-        ev.preventDefault();
-        ev.stopPropagation();
-        this._pendingRemovePlayerId = null;
-        this._renderShell();
-        return;
-      }
-      const selectRow = ev.target.closest("[data-action=select-player-row]");
-      if (selectRow) {
-        const nextId = selectRow.getAttribute("data-player-id");
-        if (this._selectedPlayer && this._selectedPlayer !== nextId) {
-          this._captureDraftInputsFromDom(this._selectedPlayer);
-        }
-        this._selectedPlayer = nextId;
-        this._tab = "tips";
         this._renderShell();
         return;
       }
@@ -575,20 +698,9 @@ class WmTippspielCard extends HTMLElement {
         this._clearAllResults(clearAllResults);
         return;
       }
-      const addPlayer = ev.target.closest("[data-action=add-player-card]");
-      if (addPlayer) {
-        ev.preventDefault();
-        this._addPlayerFromCard();
-        return;
-      }
     });
 
     this.shadowRoot.addEventListener("input", (ev) => {
-      const addInput = ev.target.closest(".add-player-input");
-      if (addInput) {
-        this._newPlayerName = addInput.value;
-        return;
-      }
       const input = ev.target.closest(".score-input");
       if (!input) return;
       const matchId = input.getAttribute("data-match");
@@ -621,8 +733,6 @@ class WmTippspielCard extends HTMLElement {
         }
         return;
       }
-      const addInput = ev.target.closest(".add-player-input");
-      if (addInput) this._addPlayerFromCard();
     });
 
     this.shadowRoot.addEventListener(
@@ -1253,6 +1363,13 @@ class WmTippspielCard extends HTMLElement {
       .match-status-badge.status-soon { background: rgba(234,179,8,0.18); color: #fde047; }
       .match-status-badge.status-locked { background: rgba(148,163,184,0.15); color: #cbd5e1; }
       .match-status-badge.status-exact { background: rgba(251,191,36,0.2); color: #fde68a; border: 1px solid rgba(251,191,36,0.45); }
+      .team-label .team-short { display: none; }
+      .team-label .team-full { display: inline; }
+      .team-short-label {
+        font-weight: 800;
+        font-size: 0.72rem;
+        letter-spacing: 0.04em;
+      }
       .group-tables {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
@@ -1798,73 +1915,13 @@ class WmTippspielCard extends HTMLElement {
         font-weight: 700;
         letter-spacing: 0.04em;
       }
-      .player-panel {
-        border-radius: 16px;
-        padding: 16px;
-        background: rgba(255,255,255,0.04);
-        border: 1px solid rgba(255,255,255,0.08);
-      }
-      .player-panel h3 {
-        margin: 0 0 6px;
-        font-size: 1rem;
-      }
-      .player-panel p {
-        margin: 0 0 14px;
-        font-size: 0.82rem;
-        opacity: 0.72;
-        line-height: 1.45;
-      }
-      .player-list {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        margin-bottom: 14px;
-      }
-      .player-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 10px;
-        padding: 10px 12px;
-        border-radius: 12px;
-        background: rgba(0,0,0,0.18);
-        border: 1px solid rgba(255,255,255,0.08);
-      }
-      .player-row-name { font-weight: 700; font-size: 0.92rem; }
-      .player-row-id { font-size: 0.68rem; opacity: 0.5; }
-      .player-row-confirm {
-        border-color: rgba(248,113,113,0.35);
-        background: rgba(248,113,113,0.08);
-      }
-      .player-row-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
-      .btn-icon {
-        border: 1px solid rgba(255,255,255,0.12);
-        background: rgba(255,255,255,0.06);
-        color: inherit;
-        border-radius: 10px;
-        padding: 6px 10px;
-        font-size: 0.75rem;
-        cursor: pointer;
-      }
-      .btn-icon.danger { color: #fca5a5; border-color: rgba(248,113,113,0.35); }
-      .add-player-box {
-        display: grid;
-        grid-template-columns: 1fr auto;
-        gap: 8px;
-        align-items: center;
-      }
-      .add-player-input {
-        width: 100%;
-        border-radius: 12px;
-        border: 1px solid rgba(255,255,255,0.15);
-        background: rgba(0,0,0,0.22);
-        color: inherit;
-        padding: 12px 14px;
-        font-size: 0.92rem;
-      }
-      .add-player-input:focus {
-        outline: 2px solid ${accent}88;
-        border-color: ${accent};
+      @media (max-width: 768px) {
+        .match-status-badge.status-saved { display: none; }
+        .team-label .team-full { display: none; }
+        .team-label .team-short { display: inline; }
+        .match-row-compact .teams-inline {
+          font-size: 0.72rem;
+        }
       }
     `;
   }
@@ -1872,6 +1929,7 @@ class WmTippspielCard extends HTMLElement {
   _renderShell() {
     if (!this.shadowRoot) return;
     if (this._tab === "matches") this._tab = "bracket";
+    if (this._tab === "players") this._tab = "tips";
     if ((this._tab === "tips" || this._tab === "bracket") && this._selectedPlayer) {
       const active = this.shadowRoot.activeElement;
       if (active?.classList?.contains("score-input") && active.getAttribute("data-kind") === "tip") {
@@ -1896,14 +1954,12 @@ class WmTippspielCard extends HTMLElement {
       const playerId = this._selectedPlayer;
       const playerTips = tips[playerId] || {};
 
-      if (!players.length && (this._tab === "tips" || this._tab === "bracket")) this._tab = "players";
       if (this._tab === "bracket" && this._config.show_knockout === false) this._tab = "tips";
 
       if (this._tab === "standings") {
         this._detectStandingsFlash(standings);
         body = this._renderStandings(standings);
       } else if (this._tab === "bracket") body = this._renderBracket(knockoutMatches, playerTips, results, playerId, players);
-      else if (this._tab === "players") body = this._renderPlayers(players);
       else body = this._renderTips(groupMatches, playerTips, results, playerId, players, groupTables);
     }
 
@@ -1955,99 +2011,8 @@ class WmTippspielCard extends HTMLElement {
     }
   }
 
-  _renderPlayers(players) {
-    const pendingId = this._pendingRemovePlayerId;
-    const list =
-      players.length > 0
-        ? `<div class="player-list">${players
-            .map((p) => {
-              if (pendingId === p.id) {
-                return `<div class="player-row player-row-confirm">
-                  <div>
-                    <div class="player-row-name">${escapeHtml(p.name)} wirklich entfernen?</div>
-                    <div class="player-row-id">Alle Tipps dieses Spielers werden gelöscht.</div>
-                  </div>
-                  <div class="player-row-actions">
-                    <button type="button" class="btn-icon danger" data-action="confirm-remove-player" data-player-id="${escapeHtml(p.id)}">Ja, löschen</button>
-                    <button type="button" class="btn-icon" data-action="cancel-remove-player">Abbrechen</button>
-                  </div>
-                </div>`;
-              }
-              return `<div class="player-row">
-                  <div>
-                    <div class="player-row-name">${escapeHtml(p.name)}</div>
-                    <div class="player-row-id">ID: ${escapeHtml(p.id)}</div>
-                  </div>
-                  <div class="player-row-actions">
-                    <button type="button" class="btn-icon" data-action="select-player-row" data-player-id="${escapeHtml(p.id)}">Tippen</button>
-                    ${this._isAdmin() ? `<button type="button" class="btn-icon danger" data-action="remove-player" data-player-id="${escapeHtml(p.id)}">Entfernen</button>` : ""}
-                  </div>
-                </div>`;
-            })
-            .join("")}</div>`
-        : `<div class="empty" style="margin-bottom:14px">
-            <div class="empty-icon">👥</div>
-            <h3>Noch keine Spieler</h3>
-            <p>Füge unten die ersten Mitspieler hinzu – z. B. deinen Namen.</p>
-          </div>`;
-
-    return `<div class="player-panel">
-      <h3>Mitspieler verwalten</h3>
-      <p>Spieler werden für das gesamte Tippspiel gespeichert und stehen auf allen Geräten zur Verfügung.</p>
-      ${list}
-      <div class="add-player-box">
-        <input class="add-player-input" type="text" placeholder="Name eingeben…" value="${escapeHtml(this._newPlayerName || "")}" />
-        <button type="button" class="btn" data-action="add-player-card" style="margin-top:0;width:auto;padding:12px 16px">+ Hinzufügen</button>
-      </div>
-    </div>`;
-  }
-
-  async _addPlayerFromCard() {
-    const name = (this._newPlayerName || "").trim();
-    if (!name || !this._hass) return;
-    await this._callService("add_player", { name });
-    this._newPlayerName = "";
-    this._tab = "tips";
-  }
-
   _isAdmin() {
     return this._config.admin === true || this._config.admin === "true";
-  }
-
-  async _removePlayer(playerId) {
-    if (!playerId || !this._hass) return;
-    if (!this._isAdmin()) {
-      this._showToast("Spieler entfernen ist nur im Admin-Modus möglich.", "error");
-      return;
-    }
-
-    const players = this._data().players || [];
-    const player = players.find((p) => p.id === playerId);
-    const name = player?.name || "Spieler";
-
-    try {
-      await this._callService("remove_player", { player_id: playerId });
-      this._pendingRemovePlayerId = null;
-      delete this._draftTips[playerId];
-      if (this._selectedPlayer === playerId) this._selectedPlayer = null;
-      if (this._state?.attributes) {
-        const attrs = { ...this._state.attributes };
-        attrs.players = (attrs.players || []).filter((p) => p.id !== playerId);
-        const entities = { ...(attrs.player_entities || {}) };
-        delete entities[playerId];
-        attrs.player_entities = entities;
-        attrs.standings = (attrs.standings || []).filter((s) => s.id !== playerId);
-        this._state = { ...this._state, attributes: attrs };
-        this._stateFingerprintCache = this._stateFingerprint(this._state);
-      }
-      this._pruneDraftTips();
-      this._ensurePlayer();
-      this._renderShell();
-      this._showToast(`${name} entfernt`, "success");
-    } catch (err) {
-      console.error("[wm-tippspiel-card] remove_player failed:", err);
-      this._showToast(`Entfernen fehlgeschlagen: ${err?.message || err}`, "error");
-    }
   }
 
   _detectStandingsFlash(standings) {
@@ -2218,9 +2183,9 @@ class WmTippspielCard extends HTMLElement {
         <div class="match-row-compact">
           <div class="teams-inline">
             ${teamFlag(m.home)}
-            <span>${escapeHtml(m.home)}</span>
+            <span>${teamDisplayName(m.home)}</span>
             <div class="score-box">${scoreHtml}</div>
-            <span>${escapeHtml(m.away)}</span>
+            <span>${teamDisplayName(m.away)}</span>
             ${teamFlag(m.away)}
           </div>
           ${extra}
@@ -2235,12 +2200,12 @@ class WmTippspielCard extends HTMLElement {
       <div class="teams">
         <div class="team">
           <span class="team-flag">${teamFlag(m.home)}</span>
-          <span class="team-name">${escapeHtml(m.home)}</span>
+          <span class="team-name">${teamDisplayName(m.home)}</span>
         </div>
         <div class="score-box">${scoreHtml}</div>
         <div class="team away">
           <span class="team-flag">${teamFlag(m.away)}</span>
-          <span class="team-name">${escapeHtml(m.away)}</span>
+          <span class="team-name">${teamDisplayName(m.away)}</span>
         </div>
       </div>
       ${extra}
@@ -2298,12 +2263,12 @@ class WmTippspielCard extends HTMLElement {
       </div>
       <div class="bracket-team-line">
         ${isBracketPlaceholder(m.home) ? "" : `<span class="team-flag">${teamFlag(m.home)}</span>`}
-        <span class="bracket-label" title="${escapeHtml(m.home)}">${escapeHtml(m.home)}</span>
+        <span class="bracket-label" title="${escapeHtml(m.home)}">${teamDisplayName(m.home)}</span>
         ${homeScore}
       </div>
       <div class="bracket-team-line">
         ${isBracketPlaceholder(m.away) ? "" : `<span class="team-flag">${teamFlag(m.away)}</span>`}
-        <span class="bracket-label" title="${escapeHtml(m.away)}">${escapeHtml(m.away)}</span>
+        <span class="bracket-label" title="${escapeHtml(m.away)}">${teamDisplayName(m.away)}</span>
         ${awayScore}
       </div>
       ${footer ? `<div class="bracket-slot-footer">${footer}</div>` : ""}
@@ -2344,8 +2309,7 @@ class WmTippspielCard extends HTMLElement {
       return `<div class="empty">
         <div class="empty-icon">👥</div>
         <h3>Spieler fehlen</h3>
-        <p>Wechsle zum Tab <strong>Spieler</strong> und füge Mitspieler hinzu.</p>
-        <button type="button" class="btn" data-tab="players" style="margin-top:12px">Zu Spieler wechseln</button>
+        <p>Mitspieler in den <strong>Karten-Einstellungen</strong> unter „Spielerverwaltung“ hinzufügen.</p>
       </div>`;
     }
     if (!playerId) {
@@ -2418,8 +2382,7 @@ class WmTippspielCard extends HTMLElement {
       return `<div class="empty">
         <div class="empty-icon">👥</div>
         <h3>Spieler fehlen</h3>
-        <p>Wechsle zum Tab <strong>Spieler</strong> und füge Mitspieler hinzu.</p>
-        <button type="button" class="btn" data-tab="players" style="margin-top:12px">Zu Spieler wechseln</button>
+        <p>Mitspieler in den <strong>Karten-Einstellungen</strong> unter „Spielerverwaltung“ hinzufügen.</p>
       </div>`;
     }
     if (!playerId) {
