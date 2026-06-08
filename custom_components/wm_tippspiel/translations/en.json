@@ -23,7 +23,7 @@
           "api_key": "API-Football key",
           "auto_results": "Fetch results automatically",
           "scan_interval": "Results poll interval (seconds, min. 300)",
-          "update_check_interval": "Update check interval (seconds, min. 300, default 21600 = 6 h)"
+          "update_check_interval": "Update check interval (seconds, min. 60, default 60 = 1 min)"
         }
       }
     }

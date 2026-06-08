@@ -23,7 +23,7 @@
           "api_key": "API-Football Schlüssel",
           "auto_results": "Ergebnisse automatisch abrufen",
           "scan_interval": "Ergebnis-Abfrage (Sekunden, min. 300)",
-          "update_check_interval": "Update-Check (Sekunden, min. 300, Standard 21600 = 6 h)"
+          "update_check_interval": "Update-Check (Sekunden, min. 60, Standard 60 = 1 min)"
         }
       }
     }

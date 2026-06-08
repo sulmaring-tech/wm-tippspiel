@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 import logging
 import shutil
 import tempfile
@@ -180,7 +181,14 @@ class WmTippspielUpdateEntity(UpdateEntity):
             if backup_dir.is_dir():
                 shutil.rmtree(backup_dir, ignore_errors=True)
 
-        self._attr_installed_version = target_version or integration_version()
+        manifest_path = dest / "manifest.json"
+        if manifest_path.is_file():
+            installed = json.loads(manifest_path.read_text(encoding="utf-8")).get(
+                "version"
+            )
+            self._attr_installed_version = str(installed or target_version)
+        else:
+            self._attr_installed_version = target_version or integration_version()
         self._attr_update_available = False
         self.async_write_ha_state()
 

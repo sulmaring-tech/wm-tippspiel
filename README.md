@@ -33,35 +33,38 @@ Status unter Sensor-Attribut `api_sync` (Rangliste-Sensor).
 
 ## Updates
 
-Ab Version **1.2.0** erscheint ein Update-Eintrag unter:
+Updates werden über den **Home-Assistant-Update-Manager** eingespielt (nicht über HACS).
 
 **Einstellungen → System → Updates**
 
 Entity: `update.<tippspiel_name>_software` (am WM-Tippspiel-Gerät)
 
-- Vergleicht die installierte Version mit dem neuesten **[GitHub Release](https://github.com/sulmaring-tech/wm-tippspiel/releases)**
-- Update kann direkt in Home Assistant installiert werden
-- Nach dem Update ist ein **Neustart** von Home Assistant erforderlich
-- **Update-Check-Intervall** (ab v1.3.4): unter *Geräte & Dienste → WM Tippspiel → Konfigurieren* einstellbar (Standard **21600** Sek. = 6 h, Minimum **300** Sek. = 5 min, Maximum 24 h)
+- Vergleicht die installierte Version (`manifest.json`) mit dem neuesten **[GitHub Release](https://github.com/sulmaring-tech/wm-tippspiel/releases)**
+- Update direkt in Home Assistant installieren
+- Nach dem Update **Home Assistant neu starten**
+- **Update-Check-Intervall**: unter *Geräte & Dienste → WM Tippspiel → Konfigurieren* (Standard **60** Sek. = 1 min, Minimum 60 Sek., Maximum 24 h)
 
-Bei Installation über **HACS** erscheint zusätzlich ein HACS-Update-Eintrag. Beide funktionieren parallel.
+> **Hinweis:** Wenn die Integration zusätzlich über HACS installiert ist, kann es zu doppelten Update-Hinweisen kommen. Updates bitte nur über den Home-Assistant-Update-Manager ausführen.
 
-Neue Versionen werden als Git-Tags veröffentlicht (`v1.2.0`, `v1.2.1`, …).
+Neue Versionen werden als Git-Tags veröffentlicht (`v1.6.16`, …).
 
-### HACS (empfohlen)
+### Installation (empfohlen)
+
+1. Ordner `custom_components/wm_tippspiel` nach `config/custom_components/` kopieren (oder per GitHub-Release-Zip)
+2. Home Assistant **neu starten**
+3. Unter **Einstellungen → Geräte & Dienste → Integration hinzufügen** → **WM Tippspiel** einrichten
+4. Lovelace-Ressource hinzufügen (siehe unten)
+5. Künftige Updates über **Einstellungen → System → Updates**
+
+### HACS (optional, nur Erstinstallation)
+
+HACS eignet sich für die erste Installation. **Updates bitte nicht über HACS**, sondern über den Home-Assistant-Update-Manager (siehe oben).
 
 1. Repository als Custom Repository hinzufügen (Kategorie: **Integration**)
 2. URL: `https://github.com/sulmaring-tech/wm-tippspiel`
 3. **WM Tippspiel** installieren
 4. Home Assistant **neu starten**
-5. Unter **Einstellungen → Geräte & Dienste → Integration hinzufügen** → **WM Tippspiel** einrichten
-6. Erst danach die Lovelace-Ressource hinzufügen (siehe unten)
-
-### Manuell
-
-1. Ordner `custom_components/wm_tippspiel` nach `config/custom_components/` kopieren
-2. Home Assistant neu starten
-3. Integration wie oben einrichten
+5. Integration einrichten und Lovelace-Ressource hinzufügen
 
 ## Lovelace-Karte
 
