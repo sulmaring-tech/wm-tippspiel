@@ -9,7 +9,7 @@ import voluptuous as vol
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant, ServiceCall, callback
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
@@ -33,6 +33,7 @@ from .const import (
     SERVICE_SYNC_RESULTS,
 )
 from .coordinator import WmTippspielCoordinator
+from .frontend import async_register_card
 from .runtime import WmTippspielRuntime, get_runtime, get_store
 from .storage import WmTippspielStore
 
@@ -48,6 +49,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Stellt die Lovelace-Karte bereit, sobald die Integration geladen ist."""
     await _register_www(hass)
     hass.data.setdefault(DOMAIN, {})
+    hass.async_create_task(async_register_card(hass))
     return True
 
 
@@ -84,6 +86,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await _register_www(hass)
     _register_services(hass)
+    hass.async_create_task(async_register_card(hass))
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
@@ -122,7 +125,7 @@ def _register_services(hass: HomeAssistant) -> None:
         await store.async_save()
         _async_notify(hass)
 
-    async def _clear_tip(call: ServiceCall) -> None:
+    async def _clear_tip(call: ServiceCall) -> dict[str, bool]:
         store = get_store(hass, call.data.get("entry_id"))
         try:
             deleted = store.clear_tip(
@@ -133,6 +136,7 @@ def _register_services(hass: HomeAssistant) -> None:
         if deleted:
             await store.async_save()
             _async_notify(hass)
+        return {"deleted": deleted}
 
     async def _set_result(call: ServiceCall) -> None:
         store = get_store(hass, call.data.get("entry_id"))
@@ -232,6 +236,7 @@ def _register_services(hass: HomeAssistant) -> None:
                 vol.Required(ATTR_MATCH_ID): cv.string,
             }
         ),
+        supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(
         DOMAIN,

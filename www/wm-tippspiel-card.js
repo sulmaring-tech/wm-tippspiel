@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.6.16";
+const WM_TIPPSPIEL_CARD_VERSION = "1.6.17";
 const AUTO_SAVE_DELAY_MS = 400;
 const MATCH_TIP_STATUS_CLASSES = [
   "tip-status-saved",
@@ -949,10 +949,14 @@ class WmTippspielCard extends HTMLElement {
 
   _applySavedTip(matchId, home, away, playerId = this._selectedPlayer) {
     if (!playerId) return;
+    const tipKey = String(matchId);
     const ent = this._state?.attributes?.player_entities?.[playerId];
     if (ent && this._hass?.states[ent]) {
       const st = this._hass.states[ent];
-      const tips = { ...(st.attributes?.tips || {}), [matchId]: { home, away } };
+      const tips = { ...(st.attributes?.tips || {}) };
+      const oldKey = this._resolveTipMatchKey(tips, matchId);
+      if (oldKey && oldKey !== tipKey) delete tips[oldKey];
+      tips[tipKey] = { home, away };
       this._hass.states[ent] = {
         ...st,
         attributes: { ...st.attributes, tips },
@@ -964,7 +968,7 @@ class WmTippspielCard extends HTMLElement {
       this._state = { ...this._state, attributes: { ...attrs, tips } };
     }
     this._stateFingerprintCache = this._stateFingerprint(this._state);
-    this._updateTipSnapshot(matchId, playerId, { home, away });
+    this._updateTipSnapshot(tipKey, playerId, { home, away });
   }
 
   _applyClearedTip(matchId, playerId = this._selectedPlayer) {
@@ -973,7 +977,8 @@ class WmTippspielCard extends HTMLElement {
     if (ent && this._hass?.states[ent]) {
       const st = this._hass.states[ent];
       const tips = { ...(st.attributes?.tips || {}) };
-      delete tips[matchId];
+      const key = this._resolveTipMatchKey(tips, matchId);
+      if (key) delete tips[key];
       this._hass.states[ent] = {
         ...st,
         attributes: { ...st.attributes, tips },
@@ -983,7 +988,8 @@ class WmTippspielCard extends HTMLElement {
       const tips = { ...(attrs.tips || {}) };
       if (tips[playerId]) {
         tips[playerId] = { ...tips[playerId] };
-        delete tips[playerId][matchId];
+        const key = this._resolveTipMatchKey(tips[playerId], matchId);
+        if (key) delete tips[playerId][key];
       }
       this._state = { ...this._state, attributes: { ...attrs, tips } };
     }
@@ -1069,7 +1075,7 @@ class WmTippspielCard extends HTMLElement {
   _readTipFieldValues(matchId, playerId = this._selectedPlayer) {
     const draft = this._getDraftTip(playerId, matchId);
     const hasDraft = draft && Object.keys(draft).length > 0;
-    const saved = this._playerTipsFor(playerId)[matchId] || {};
+    const saved = this._getStoredTipFromMap(this._playerTipsFor(playerId), matchId) || {};
     if (hasDraft) {
       return {
         home: draft.home !== undefined ? draft.home : saved.home ?? "",
@@ -1157,7 +1163,8 @@ class WmTippspielCard extends HTMLElement {
     const match = (this._state?.attributes?.matches || []).find((m) => m.id === matchId);
     if (!match || !this._selectedPlayer || !this.shadowRoot) return;
     const results = this._state?.attributes?.results || {};
-    const savedTip = this._playerTipsFor(this._selectedPlayer)[matchId] || {};
+    const savedTip =
+      this._getStoredTipFromMap(this._playerTipsFor(this._selectedPlayer), matchId) || {};
     const draftTip = this._getDraftTip(this._selectedPlayer, matchId);
     const tip = mergeTipWithDraft(savedTip, draftTip);
     const res = results[matchId];
@@ -1215,15 +1222,32 @@ class WmTippspielCard extends HTMLElement {
     return this._config.auto_save_tips !== false;
   }
 
+  _resolveTipMatchKey(tips, matchId) {
+    if (!tips || matchId == null || matchId === "") return null;
+    if (tips[matchId] != null) return matchId;
+    const mid = String(matchId);
+    for (const key of Object.keys(tips)) {
+      if (String(key) === mid) return key;
+    }
+    return null;
+  }
+
+  _getStoredTipFromMap(tips, matchId) {
+    const key = this._resolveTipMatchKey(tips, matchId);
+    return key != null ? tips[key] : null;
+  }
+
   _getSavedTip(matchId, playerId = this._selectedPlayer) {
     if (!playerId) return null;
-    const live = this._playerTipsFor(playerId)[matchId];
+    const live = this._getStoredTipFromMap(this._playerTipsFor(playerId), matchId);
     if (live) return live;
     return this._getSnapshottedTip(matchId, playerId);
   }
 
   _getSnapshottedTip(matchId, playerId) {
-    return this._tipsSnapshot?.[playerId]?.[matchId] || null;
+    const snap = this._tipsSnapshot?.[playerId];
+    if (!snap) return null;
+    return this._getStoredTipFromMap(snap, matchId);
   }
 
   _snapshotPlayerTips(playerId = this._selectedPlayer) {
@@ -1234,8 +1258,9 @@ class WmTippspielCard extends HTMLElement {
   _updateTipSnapshot(matchId, playerId, tipOrNull) {
     if (!playerId) return;
     const bucket = { ...(this._tipsSnapshot[playerId] || {}) };
-    if (tipOrNull) bucket[matchId] = tipOrNull;
-    else delete bucket[matchId];
+    const key = this._resolveTipMatchKey(bucket, matchId) ?? matchId;
+    if (tipOrNull) bucket[key] = tipOrNull;
+    else delete bucket[key];
     this._tipsSnapshot[playerId] = bucket;
   }
 
@@ -1248,8 +1273,7 @@ class WmTippspielCard extends HTMLElement {
 
   _hasStoredTipForClear(matchId, playerId) {
     if (!playerId) return false;
-    if (this._playerTipsFor(playerId)[matchId]) return true;
-    return Boolean(this._getSnapshottedTip(matchId, playerId));
+    return Boolean(this._getSavedTip(matchId, playerId));
   }
 
   _discardTipDraft(matchId, playerId) {
@@ -1597,11 +1621,17 @@ class WmTippspielCard extends HTMLElement {
     return null;
   }
 
-  async _callService(service, data = {}) {
+  async _callService(service, data = {}, returnResponse = false) {
     const payload = { ...data };
     const entryId = this._entryId();
     if (entryId && payload.entry_id == null) payload.entry_id = entryId;
-    await this._hass.callService("wm_tippspiel", service, payload);
+    return await this._hass.callService(
+      "wm_tippspiel",
+      service,
+      payload,
+      undefined,
+      returnResponse
+    );
   }
 
   _styles() {
@@ -2679,7 +2709,7 @@ class WmTippspielCard extends HTMLElement {
 
   _buildMatchTipContext(m, playerTips, results, playerId) {
     const locked = isPastKickoff(m.kickoff, 0);
-    const savedTip = playerTips[m.id] || {};
+    const savedTip = this._getStoredTipFromMap(playerTips, m.id) || {};
     const draftTip = this._getDraftTip(playerId, m.id);
     const tip = mergeTipWithDraft(savedTip, draftTip);
     const res = results[m.id];
@@ -3131,8 +3161,11 @@ class WmTippspielCard extends HTMLElement {
       return;
     }
 
-    if (!this._hasStoredTipForClear(matchId, playerId)) {
-      this._discardTipDraft(matchId, playerId);
+    const hadStored = this._hasStoredTipForClear(matchId, playerId);
+    if (!hadStored) {
+      if (this._tipInputsEmpty(matchId, playerId)) {
+        this._discardTipDraft(matchId, playerId);
+      }
       return;
     }
 
@@ -3140,10 +3173,24 @@ class WmTippspielCard extends HTMLElement {
       this._setTipSaveStatus(matchId, "saving");
     }
     try {
-      await this._callService("clear_tip", {
-        player_id: playerId,
-        match_id: matchId,
-      });
+      const response = await this._callService(
+        "clear_tip",
+        {
+          player_id: playerId,
+          match_id: matchId,
+        },
+        true
+      );
+      const deleted = response?.response?.deleted === true;
+      if (!deleted) {
+        if (playerId === this._selectedPlayer) {
+          this._setTipSaveStatus(matchId, "error");
+        }
+        if (!silent) {
+          this._showToast("Tipp konnte nicht gelöscht werden.", "error");
+        }
+        return;
+      }
       this._applyClearedTip(matchId, playerId);
       const playerDrafts = this._draftTipsForPlayer(playerId);
       delete playerDrafts[matchId];
@@ -3157,15 +3204,11 @@ class WmTippspielCard extends HTMLElement {
         }
       }
     } catch (err) {
-      const msg = String(err?.message || err || "");
-      if (msg.includes("Kein gespeicherter Tipp")) {
-        this._discardTipDraft(matchId, playerId);
-        return;
-      }
       console.error("[wm-tippspiel-card] clear_tip failed:", err);
       if (playerId === this._selectedPlayer) {
         this._setTipSaveStatus(matchId, "error");
       }
+      const msg = String(err?.message || err || "");
       const hint = msg.includes("clear_tip") || msg.includes("not found") || msg.includes("Service")
         ? " Home Assistant neu laden (Integration-Update)."
         : "";

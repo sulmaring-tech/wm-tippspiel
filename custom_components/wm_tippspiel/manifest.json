@@ -1,10 +1,11 @@
 {
   "domain": "wm_tippspiel",
   "name": "WM Tippspiel",
-  "version": "1.6.16",
+  "version": "1.6.17",
   "documentation": "https://github.com/sulmaring-tech/wm-tippspiel",
   "issue_tracker": "https://github.com/sulmaring-tech/wm-tippspiel/issues",
   "codeowners": [],
+  "dependencies": ["http", "lovelace"],
   "config_flow": true,
   "iot_class": "cloud_polling",
   "integration_type": "service"

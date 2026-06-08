@@ -68,14 +68,16 @@ HACS eignet sich für die erste Installation. **Updates bitte nicht über HACS**
 
 ## Lovelace-Karte
 
-Ressource registrieren (Einstellungen → Dashboards → Ressourcen):
+Ab **v1.6.17** registriert die Integration die Karten-Ressource **automatisch** in Lovelace (Storage-Modus). Nach einem Update wird die `?v=`-Version ebenfalls automatisch angepasst – **kein manuelles Ändern der Ressource nötig**.
+
+Falls die Karte nicht lädt, kann die Ressource manuell ergänzt werden (Einstellungen → Dashboards → Ressourcen):
 
 ```yaml
-url: /wm_tippspiel/wm-tippspiel-card.js?v=1.2.0
+url: /wm_tippspiel/wm-tippspiel-card.js
 type: module
 ```
 
-**Wichtig:** Die Ressource funktioniert erst, wenn die Integration eingerichtet ist und Home Assistant danach neu gestartet wurde.
+**Wichtig:** Die Karte funktioniert erst, wenn die Integration eingerichtet ist und Home Assistant danach neu gestartet wurde.
 
 ### Fehler „Custom element not found: wm-tippspiel-card“
 
@@ -83,7 +85,7 @@ type: module
 2. **URL testen:** Im Browser öffnen: `http://DEINE-HA-IP:8123/wm_tippspiel/wm-tippspiel-card.js`  
    - Seite zeigt JavaScript-Code → Ressource ist OK  
    - **404 / leer** → Integration fehlt oder HA nicht neu gestartet
-3. **Ressource neu laden:** Dashboard-Ressource löschen, mit `?v=1.0.1` neu anlegen, Browser-Cache leeren (Strg+F5).
+3. **Ressource prüfen:** Unter *Dashboards → Ressourcen* sollte `/wm_tippspiel/wm-tippspiel-card.js` vorhanden sein. Sonst HA neu starten. Browser-Cache leeren (Strg+F5).
 4. **Alternative (sofort):** Datei `wm-tippspiel-card.js` nach `config/www/` kopieren und als Ressource `/local/wm-tippspiel-card.js` eintragen.
 
 Beispiel-Karte:

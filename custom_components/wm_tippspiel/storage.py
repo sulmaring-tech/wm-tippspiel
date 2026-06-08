@@ -189,8 +189,9 @@ class WmTippspielStore:
         return changed
 
     def get_match(self, match_id: str) -> dict[str, Any] | None:
+        mid = str(match_id)
         for match in self.get_matches():
-            if match.get("id") == match_id:
+            if str(match.get("id")) == mid:
                 return match
         return None
 
@@ -232,7 +233,7 @@ class WmTippspielStore:
         if is_past_kickoff(match.get("kickoff")):
             raise ValueError("Tippabgabe geschlossen – Anpfiff bereits erfolgt.")
         player_tips = self._data.setdefault("tips", {}).setdefault(player_id, {})
-        player_tips[match_id] = {"home": int(home), "away": int(away)}
+        player_tips[str(match["id"])] = {"home": int(home), "away": int(away)}
 
     def clear_tip(self, player_id: str, match_id: str) -> bool:
         if not any(p.get("id") == player_id for p in self.get_players()):
