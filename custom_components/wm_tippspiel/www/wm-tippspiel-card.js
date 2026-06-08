@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.6.12";
+const WM_TIPPSPIEL_CARD_VERSION = "1.6.13";
 const AUTO_SAVE_DELAY_MS = 400;
 const MATCH_TIP_STATUS_CLASSES = [
   "tip-status-saved",
@@ -103,6 +103,33 @@ function formatKickoff(iso) {
       month: "2-digit",
       hour: "2-digit",
       minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function kickoffDayId(iso) {
+  if (!iso) return "date-unknown";
+  try {
+    const d = new Date(iso);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `date-${y}-${m}-${day}`;
+  } catch {
+    return "date-unknown";
+  }
+}
+
+function kickoffDayLabel(iso) {
+  if (!iso) return "Datum unbekannt";
+  try {
+    return new Date(iso).toLocaleDateString("de-DE", {
+      weekday: "long",
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
     });
   } catch {
     return iso;
@@ -711,6 +738,7 @@ class WmTippspielCard extends HTMLElement {
     this._tipSaveStatus = this._tipSaveStatus || {};
     this._persistInFlight = this._persistInFlight || {};
     this._displayedPlayerId = this._displayedPlayerId ?? null;
+    this._tipsViewMode = this._tipsViewMode || "group";
     if (!this.shadowRoot) {
       this.attachShadow({ mode: "open" });
       this._bindEvents();
@@ -732,6 +760,16 @@ class WmTippspielCard extends HTMLElement {
       const playerBtn = ev.target.closest(".player-chip[data-player-id]");
       if (playerBtn) {
         void this._switchPlayer(playerBtn.getAttribute("data-player-id"));
+        return;
+      }
+      const tipsViewBtn = ev.target.closest("[data-tips-view]");
+      if (tipsViewBtn) {
+        const mode = tipsViewBtn.getAttribute("data-tips-view");
+        if (mode === "group" || mode === "date") {
+          this._tipsViewMode = mode;
+          this._openAccordions.clear();
+          this._renderShell();
+        }
         return;
       }
       const saveTip = ev.target.closest("[data-action=save-tip]");
@@ -1331,6 +1369,9 @@ class WmTippspielCard extends HTMLElement {
   }
 
   _defaultOpenAccordionId() {
+    if (this._tab === "tips" && this._tipsViewMode === "date" && this._defaultDateAccordionId) {
+      return this._defaultDateAccordionId;
+    }
     const groups = normalizeGroups(this._config.show_groups);
     const preferred = groups.includes("E") ? "E" : groups[0];
     return preferred ? `group-${preferred}` : null;
@@ -1390,6 +1431,41 @@ class WmTippspielCard extends HTMLElement {
     }
 
     return html;
+  }
+
+  _renderMatchAccordionsByDate(matches, renderMatchFn) {
+    const sorted = [...matches].sort(
+      (a, b) => new Date(a.kickoff || 0).getTime() - new Date(b.kickoff || 0).getTime()
+    );
+    const sections = [];
+    const index = new Map();
+    for (const m of sorted) {
+      const id = kickoffDayId(m.kickoff);
+      if (!index.has(id)) {
+        const section = { id, label: kickoffDayLabel(m.kickoff), list: [] };
+        index.set(id, section);
+        sections.push(section);
+      }
+      index.get(id).list.push(m);
+    }
+    this._defaultDateAccordionId = sections[0]?.id || null;
+    return sections
+      .map((section) =>
+        this._renderAccordion(
+          section.id,
+          section.label,
+          section.list.length,
+          section.list.map(renderMatchFn).join("")
+        )
+      )
+      .join("");
+  }
+
+  _renderTipsViewFilter(mode = "group") {
+    return `<div class="tips-view-filter" role="tablist" aria-label="Spielansicht">
+      <button type="button" class="view-filter-btn${mode === "group" ? " active" : ""}" data-tips-view="group" role="tab" aria-selected="${mode === "group"}">Nach Gruppe</button>
+      <button type="button" class="view-filter-btn${mode === "date" ? " active" : ""}" data-tips-view="date" role="tab" aria-selected="${mode === "date"}">Nach Datum</button>
+    </div>`;
   }
 
   _matchColumns() {
@@ -1673,6 +1749,14 @@ class WmTippspielCard extends HTMLElement {
         text-align: center;
         font-weight: 800;
       }
+      .match-row-compact .match-kickoff {
+        text-align: center;
+        font-size: 0.68rem;
+        font-weight: 600;
+        opacity: 0.62;
+        line-height: 1.2;
+        font-variant-numeric: tabular-nums;
+      }
       .match-row-compact .match-status-badge {
         font-size: 0.62rem;
         padding: 3px 8px;
@@ -1680,7 +1764,31 @@ class WmTippspielCard extends HTMLElement {
         white-space: nowrap;
         font-weight: 700;
       }
-      .match-status-badge.status-saved { background: rgba(34,197,94,0.18); color: #86efac; }
+      .match-status-badge.status-saved { display: none; }
+      .tips-view-filter {
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+        margin-bottom: 14px;
+      }
+      .view-filter-btn {
+        border: 1px solid rgba(255,255,255,0.12);
+        background: rgba(255,255,255,0.04);
+        color: inherit;
+        border-radius: 999px;
+        padding: 8px 16px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        cursor: pointer;
+        opacity: 0.75;
+        transition: all 0.15s;
+      }
+      .view-filter-btn.active {
+        opacity: 1;
+        border-color: ${accent}88;
+        background: ${accent}18;
+        color: ${accent};
+      }
       .match-status-badge.status-soon { background: rgba(234,179,8,0.18); color: #fde047; }
       .match-status-badge.status-locked { background: rgba(148,163,184,0.15); color: #cbd5e1; }
       .match-status-badge.status-exact { background: rgba(251,191,36,0.2); color: #fde68a; border: 1px solid rgba(251,191,36,0.45); }
@@ -2239,7 +2347,6 @@ class WmTippspielCard extends HTMLElement {
         letter-spacing: 0.04em;
       }
       @media (max-width: 768px) {
-        .match-status-badge.status-saved { display: none; }
         .match-row-compact .teams-inline,
         .match .teams {
           grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
@@ -2577,6 +2684,7 @@ class WmTippspielCard extends HTMLElement {
               <span class="team-name-cell">${teamDisplayName(m.away)}</span>
             </div>
           </div>
+          <div class="match-kickoff">${formatKickoff(m.kickoff)}</div>
           ${extra ? `<div class="match-extra">${extra}</div>` : ""}
         </div>
       </div>`;
@@ -2785,7 +2893,7 @@ class WmTippspielCard extends HTMLElement {
     const tablesHtml =
       this._config.show_group_tables !== false ? this._renderGroupTables(groupTables) : "";
 
-    const accordions = this._renderMatchAccordions(matches, (m) => {
+    const renderMatchFn = (m) => {
       const ctx = this._buildMatchTipContext(m, playerTips, results, playerId);
       const { locked, homeVal, awayVal, status } = ctx;
 
@@ -2797,9 +2905,16 @@ class WmTippspielCard extends HTMLElement {
 
       const extra = this._renderMatchExtra(m, ctx, results, { compact });
       return this._renderMatchTeams(m, scoreHtml, extra, status, compact);
-    });
+    };
 
-    return `${tablesHtml}${accordions}`;
+    const viewMode = this._tipsViewMode === "date" ? "date" : "group";
+    const filterHtml = this._renderTipsViewFilter(viewMode);
+    const accordions =
+      viewMode === "date"
+        ? this._renderMatchAccordionsByDate(matches, renderMatchFn)
+        : this._renderMatchAccordions(matches, renderMatchFn);
+
+    return `${tablesHtml}${filterHtml}${accordions}`;
   }
 
   async _saveTip(matchId, options = {}) {
