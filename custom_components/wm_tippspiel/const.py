@@ -9,7 +9,6 @@ DOMAIN = "wm_tippspiel"
 
 CONF_TITLE = "title"
 CONF_PLAYERS = "players"
-CONF_API_KEY = "api_key"
 CONF_AUTO_RESULTS = "auto_results"
 CONF_SCAN_INTERVAL = "scan_interval"
 CONF_UPDATE_CHECK_INTERVAL = "update_check_interval"
@@ -19,9 +18,6 @@ MIN_SCAN_INTERVAL = 300
 DEFAULT_UPDATE_CHECK_INTERVAL = 60
 MIN_UPDATE_CHECK_INTERVAL = 60
 MAX_UPDATE_CHECK_INTERVAL = 86400
-API_FOOTBALL_BASE_URL = "https://v3.football.api-sports.io"
-API_FOOTBALL_LEAGUE = 1
-API_FOOTBALL_SEASON = 2026
 OPENFOOTBALL_JSON_URL = (
     "https://raw.githubusercontent.com/openfootball/worldcup.json/"
     "master/2026/worldcup.json"

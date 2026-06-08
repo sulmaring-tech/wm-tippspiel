@@ -11,7 +11,6 @@ from homeassistant.core import callback
 from homeassistant.helpers import selector
 
 from .const import (
-    CONF_API_KEY,
     CONF_AUTO_RESULTS,
     CONF_PLAYERS,
     CONF_SCAN_INTERVAL,
@@ -70,7 +69,7 @@ class WmTippspielConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class WmTippspielOptionsFlowHandler(OptionsFlow):
-    """Optionen: API-Football für automatische Ergebnisse."""
+    """Optionen: openfootball-Sync und Update-Prüfung."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -83,14 +82,6 @@ class WmTippspielOptionsFlowHandler(OptionsFlow):
             step_id="init",
             data_schema=vol.Schema(
                 {
-                    vol.Optional(
-                        CONF_API_KEY,
-                        default=options.get(CONF_API_KEY, ""),
-                    ): selector.TextSelector(
-                        selector.TextSelectorConfig(
-                            type=selector.TextSelectorType.PASSWORD
-                        )
-                    ),
                     vol.Optional(
                         CONF_AUTO_RESULTS,
                         default=options.get(CONF_AUTO_RESULTS, True),

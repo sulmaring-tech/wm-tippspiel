@@ -74,7 +74,7 @@ remove_player:
 
 sync_results:
   name: Ergebnisse synchronisieren
-  description: Ruft sofort Ergebnisse von API-Football ab (falls konfiguriert).
+  description: Ruft sofort Gruppenspiel-Ergebnisse von openfootball ab.
   fields:
     entry_id:
       name: Konfigurations-ID

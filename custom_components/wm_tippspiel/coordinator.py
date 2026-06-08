@@ -1,42 +1,24 @@
-"""Coordinator: synchronisiert WM-Ergebnisse (openfootball + optional API-Football)."""
+"""Coordinator: synchronisiert WM-Ergebnisse aus openfootball."""
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .api import ApiFootballClient, ApiFootballError
-from .const import (
-    CONF_API_KEY,
-    CONF_AUTO_RESULTS,
-    CONF_SCAN_INTERVAL,
-    DEFAULT_SCAN_INTERVAL,
-    DOMAIN,
-)
+from .const import CONF_AUTO_RESULTS, CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, DOMAIN
 from .openfootball_sync import OpenFootballError, async_fetch_openfootball_matches, sync_from_openfootball
 from .storage import WmTippspielStore
 
 _LOGGER = logging.getLogger(__name__)
 
-_TEAM_MAP_FILE = Path(__file__).parent / "data" / "team_api_ids.json"
-
-
-def _load_team_map() -> dict[str, int]:
-    if not _TEAM_MAP_FILE.is_file():
-        return {}
-    data = json.loads(_TEAM_MAP_FILE.read_text(encoding="utf-8"))
-    return {str(k): int(v) for k, v in data.items()}
-
 
 class WmTippspielCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Pollt openfootball (Ergebnisse) und optional API-Football (Anstoßzeiten)."""
+    """Pollt openfootball für Gruppenspiel-Ergebnisse."""
 
     def __init__(
         self,
@@ -55,170 +37,33 @@ class WmTippspielCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         self.entry = entry
         self.store = store
-        self._team_map = _load_team_map()
-        self._team_to_name = {v: k for k, v in self._team_map.items()}
-
-    def _api_key(self) -> str:
-        return str(self.entry.options.get(CONF_API_KEY, "")).strip()
 
     def _auto_enabled(self) -> bool:
         return bool(self.entry.options.get(CONF_AUTO_RESULTS, True))
-
-    def _api_football_enabled(self) -> bool:
-        return self._auto_enabled() and bool(self._api_key())
 
     async def _async_update_data(self) -> dict[str, Any]:
         result: dict[str, Any] = {
             "last_sync": datetime.now().isoformat(),
             "sync_enabled": self._auto_enabled(),
-            "api_enabled": self._api_football_enabled(),
             "updated_matches": 0,
-            "openfootball_updates": 0,
-            "api_football_updates": 0,
-            "schedule_updates": 0,
             "finished_count": 0,
             "error": None,
         }
         if not self._auto_enabled():
             return result
 
-        changed = False
-        errors: list[str] = []
-
         try:
             remote_matches = await async_fetch_openfootball_matches(self.hass)
             of_result = await self.hass.async_add_executor_job(
                 sync_from_openfootball, self.store, remote_matches
             )
-            result["openfootball_updates"] = of_result.get("updated_matches", 0)
+            result["updated_matches"] = of_result.get("updated_matches", 0)
             result["finished_count"] = of_result.get("finished_count", 0)
             if of_result.get("updated_matches"):
-                changed = True
+                await self.store.async_save()
+                self.hass.bus.async_fire(f"{DOMAIN}_updated")
         except OpenFootballError as err:
-            errors.append(str(err))
+            result["error"] = str(err)
             _LOGGER.warning("openfootball: %s", err)
 
-        if self._api_football_enabled():
-            client = ApiFootballClient(self.hass, self._api_key())
-            try:
-                fixtures = await client.async_get_fixtures()
-                schedule = ApiFootballClient.parse_schedule_updates(fixtures)
-                schedule_updated = self._apply_schedule(schedule)
-                result["schedule_updates"] = schedule_updated
-                finished = ApiFootballClient.parse_finished_results(fixtures)
-                api_updated = self._apply_results(finished)
-                result["api_football_updates"] = api_updated
-                result["finished_count"] = max(
-                    int(result.get("finished_count") or 0), len(finished)
-                )
-                if schedule_updated or api_updated:
-                    changed = True
-            except ApiFootballError as err:
-                errors.append(str(err))
-                _LOGGER.warning("API-Football: %s", err)
-
-        result["updated_matches"] = int(result["openfootball_updates"]) + int(
-            result["api_football_updates"]
-        )
-        if errors:
-            result["error"] = "; ".join(errors)
-
-        if changed:
-            await self.store.async_save()
-            self.hass.bus.async_fire(f"{DOMAIN}_updated")
-
         return result
-
-    def _apply_results(self, finished: list[dict[str, Any]]) -> int:
-        updated = 0
-        for item in finished:
-            match_id = self._find_match_id(
-                item.get("home_id"),
-                item.get("away_id"),
-                item.get("kickoff"),
-            )
-            if not match_id:
-                continue
-            home = int(item["home_goals"])
-            away = int(item["away_goals"])
-            existing = self.store.get_result(match_id)
-            if existing and existing["home"] == home and existing["away"] == away:
-                continue
-            self.store.set_result(match_id, home, away)
-            updated += 1
-            _LOGGER.info(
-                "API-Football: Ergebnis eingetragen %s = %s:%s",
-                match_id,
-                home,
-                away,
-            )
-        return updated
-
-    def _apply_schedule(self, schedule: list[dict[str, Any]]) -> int:
-        updated = 0
-        for item in schedule:
-            match_id = self._find_match_id(
-                item.get("home_id"),
-                item.get("away_id"),
-                item.get("kickoff"),
-            )
-            if not match_id:
-                continue
-            match = self.store.get_match(match_id)
-            if not match:
-                continue
-            home_name = self._team_to_name.get(int(item["home_id"])) if item.get("home_id") else None
-            away_name = self._team_to_name.get(int(item["away_id"])) if item.get("away_id") else None
-            kickoff = item.get("kickoff")
-            if match.get("group"):
-                if self.store.update_match_schedule(
-                    match_id,
-                    kickoff=str(kickoff) if kickoff else None,
-                    home=home_name,
-                    away=away_name,
-                ):
-                    updated += 1
-            elif kickoff and str(match.get("kickoff") or "") != str(kickoff):
-                if self.store.update_match_schedule(match_id, kickoff=str(kickoff)):
-                    updated += 1
-        return updated
-
-    def _find_match_id(
-        self,
-        home_api_id: Any,
-        away_api_id: Any,
-        kickoff: str | None,
-    ) -> str | None:
-        if home_api_id is None or away_api_id is None:
-            return None
-        try:
-            home_api_id = int(home_api_id)
-            away_api_id = int(away_api_id)
-        except (TypeError, ValueError):
-            return None
-
-        kickoff_dt = _parse_iso(kickoff)
-        for match in self.store.get_matches():
-            home_name = match.get("home")
-            away_name = match.get("away")
-            if not home_name or not away_name:
-                continue
-            mapped_home = self._team_map.get(home_name)
-            mapped_away = self._team_map.get(away_name)
-            if mapped_home != home_api_id or mapped_away != away_api_id:
-                continue
-            if kickoff_dt and match.get("kickoff"):
-                match_dt = _parse_iso(str(match["kickoff"]))
-                if match_dt and abs((match_dt - kickoff_dt).total_seconds()) > 36 * 3600:
-                    continue
-            return str(match["id"])
-        return None
-
-
-def _parse_iso(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None

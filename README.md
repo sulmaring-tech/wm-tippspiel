@@ -9,19 +9,18 @@ Tippspiel für die **Fußball-WM 2026** als Home-Assistant-Integration mit Lovel
 - **Ergebnisse eintragen** (Admin-Modus in der Karte oder Service `wm_tippspiel.set_result`)
 - **Automatische Punktevergabe**: 3 Punkte exakt, 1 Punkt richtige Tendenz
 - **Rangliste** als Sensor und in der Karte
-- **Gruppenspiele A–H** der WM 2026 vorinstalliert (48 Spiele der Gruppen A–H)
+- **Gruppenspiele A–L** der WM 2026 vorinstalliert (72 Spiele + vollständiger KO-Baum)
 - **Updates** über den Home-Assistant-Update-Manager (ab v1.2.0)
 
-## Automatische Ergebnisse (ab v1.3.0)
+## Automatische Ergebnisse (openfootball)
 
-Ergebnisse können **automatisch** von [API-Football](https://www.api-football.com/) abgerufen werden:
+Gruppenspiel-Ergebnisse werden **automatisch** aus [openfootball/worldcup.json](https://github.com/openfootball/worldcup.json) abgerufen — **ohne API-Schlüssel**.
 
-1. Kostenlosen API-Schlüssel erstellen (Free Tier: 100 Anfragen/Tag)
-2. **Einstellungen → Geräte & Dienste → WM Tippspiel → Konfigurieren**
-3. API-Schlüssel eintragen, „Ergebnisse automatisch abrufen“ aktivieren
-4. Intervall z. B. **900** Sekunden (15 Min.)
+1. **Einstellungen → Geräte & Dienste → WM Tippspiel → Konfigurieren**
+2. „Ergebnisse automatisch abrufen“ aktivieren (Standard: an)
+3. Intervall z. B. **900** Sekunden (15 Min.)
 
-Nach jedem beendeten Spiel werden Ergebnisse eingetragen und Punkte neu berechnet. Manuelle Ergebnisse (Admin) funktionieren weiterhin.
+Nach jedem beendeten Gruppenspiel werden Ergebnisse eingetragen und Punkte neu berechnet. KO-Ergebnisse und manuelle Einträge (Admin) funktionieren weiterhin über die Karte oder Services.
 
 **Manuell synchronisieren:**
 
@@ -29,7 +28,7 @@ Nach jedem beendeten Spiel werden Ergebnisse eingetragen und Punkte neu berechne
 service: wm_tippspiel.sync_results
 ```
 
-Status unter Sensor-Attribut `api_sync` (Rangliste-Sensor).
+Status unter Sensor-Attribut `results_sync` (Rangliste-Sensor; Alias `api_sync`).
 
 ## Updates
 

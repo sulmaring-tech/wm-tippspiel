@@ -18,9 +18,8 @@
     "step": {
       "init": {
         "title": "WM Tippspiel Optionen",
-        "description": "Ergebnisse aus openfootball (ohne Schlüssel). Optional API-Football für Anstoßzeiten. Update-Prüfung über GitHub Releases.",
+        "description": "Ergebnisse aus openfootball (ohne Schlüssel). Update-Prüfung über GitHub Releases.",
         "data": {
-          "api_key": "API-Football Schlüssel (optional)",
           "auto_results": "Ergebnisse automatisch abrufen (openfootball)",
           "scan_interval": "Ergebnis-Abfrage (Sekunden, min. 300)",
           "update_check_interval": "Update-Check (Sekunden, min. 60, Standard 60 = 1 min)"

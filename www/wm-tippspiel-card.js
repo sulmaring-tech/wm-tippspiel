@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.8.1";
+const WM_TIPPSPIEL_CARD_VERSION = "1.9.0";
 const AUTO_SAVE_DELAY_MS = 400;
 const MATCH_TIP_STATUS_CLASSES = [
   "tip-status-saved",
@@ -25,8 +25,12 @@ const FLAG_CDN = "https://flagcdn.com/w40";
 const TABS = [
   { id: "tips", label: "Vorrunde", icon: "mdi:soccer" },
   { id: "bracket", label: "KO-Runde", icon: "mdi:tournament", knockout: true },
+  { id: "calendar", label: "Kalender", icon: "mdi:calendar-month" },
   { id: "standings", label: "Rangliste", icon: "mdi:podium-gold" },
 ];
+
+const DISPLAY_TIMEZONE = "Europe/Berlin";
+const CALENDAR_WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 
 /** ISO-3166 Codes für flagcdn.com (Emoji-Flaggen zeigen unter Windows oft MX/ZA statt 🇲🇽). */
 const TEAM_ISO = {
@@ -110,33 +114,94 @@ function teamDisplayName(name) {
   return teamLabel(name);
 }
 
+function parseKickoffDate(iso) {
+  if (!iso) return null;
+  const normalized = iso.endsWith("Z") || /[+-]\d{2}:\d{2}$/.test(iso) ? iso : `${iso}Z`;
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function berlinDayIdFromDate(date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: DISPLAY_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const y = parts.find((p) => p.type === "year")?.value ?? "0000";
+  const m = parts.find((p) => p.type === "month")?.value ?? "01";
+  const day = parts.find((p) => p.type === "day")?.value ?? "01";
+  return `date-${y}-${m}-${day}`;
+}
+
+function berlinTodayDayId() {
+  return berlinDayIdFromDate(new Date());
+}
+
+function monthKey(year, month) {
+  return `${year}-${String(month + 1).padStart(2, "0")}`;
+}
+
 function formatKickoff(iso) {
-  if (!iso) return "–";
-  try {
-    const d = new Date(iso);
-    return d.toLocaleString("de-DE", {
-      weekday: "short",
-      day: "2-digit",
-      month: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return iso;
-  }
+  const date = parseKickoffDate(iso);
+  if (!date) return "–";
+  return `${new Intl.DateTimeFormat("de-DE", {
+    timeZone: DISPLAY_TIMEZONE,
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date)} MESZ`;
+}
+
+function formatKickoffTime(iso) {
+  const date = parseKickoffDate(iso);
+  if (!date) return "–";
+  return new Intl.DateTimeFormat("de-DE", {
+    timeZone: DISPLAY_TIMEZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
 }
 
 function kickoffDayId(iso) {
-  if (!iso) return "date-unknown";
-  try {
-    const d = new Date(iso);
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `date-${y}-${m}-${day}`;
-  } catch {
-    return "date-unknown";
+  const date = parseKickoffDate(iso);
+  if (!date) return "date-unknown";
+  return berlinDayIdFromDate(date);
+}
+
+function buildCalendarMonth(year, month, matchesByDayId) {
+  const todayId = berlinTodayDayId();
+  const firstOfMonth = new Date(year, month, 1);
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const startOffset = (firstOfMonth.getDay() + 6) % 7;
+  const cells = [];
+
+  const pushDay = (date, inMonth) => {
+    const dayId = berlinDayIdFromDate(date);
+    cells.push({
+      date,
+      dayId,
+      inMonth,
+      isToday: dayId === todayId,
+      matches: matchesByDayId.get(dayId) || [],
+    });
+  };
+
+  for (let i = startOffset; i > 0; i--) {
+    pushDay(new Date(year, month, 1 - i), false);
   }
+  for (let day = 1; day <= daysInMonth; day++) {
+    pushDay(new Date(year, month, day), true);
+  }
+  let nextDay = 1;
+  while (cells.length % 7 !== 0 || cells.length < 42) {
+    pushDay(new Date(year, month + 1, nextDay), false);
+    nextDay += 1;
+    if (cells.length >= 42 && cells.length % 7 === 0) break;
+  }
+  return cells;
 }
 
 function kickoffDayLabel(iso) {
@@ -758,6 +823,10 @@ class WmTippspielCard extends HTMLElement {
     this._tipsSnapshot = this._tipsSnapshot || {};
     this._displayedPlayerId = this._displayedPlayerId ?? null;
     this._tipsViewMode = this._tipsViewMode || "group";
+    if (!this._selectedTipGroupsList) {
+      this._selectedTipGroupsList = [...normalizeGroups(this._config.show_groups)];
+    }
+    this._selectedTipTeamsList = this._selectedTipTeamsList || [];
     if (!this.shadowRoot) {
       this.attachShadow({ mode: "open" });
       this._bindEvents();
@@ -787,13 +856,62 @@ class WmTippspielCard extends HTMLElement {
       const tipsViewBtn = ev.target.closest("[data-tips-view]");
       if (tipsViewBtn) {
         const mode = tipsViewBtn.getAttribute("data-tips-view");
-        if (mode === "group" || mode === "date") {
+        if (mode === "group" || mode === "date" || mode === "team") {
           void this._flushPendingTipsBeforeUiChange().then(() => {
             this._tipsViewMode = mode;
             this._openAccordions.clear();
             this._renderShell();
           });
         }
+        return;
+      }
+      const groupChip = ev.target.closest("[data-group-chip]");
+      if (groupChip) {
+        const group = groupChip.getAttribute("data-group-chip");
+        if (group) {
+          const set = new Set(this._selectedTipGroupsList || []);
+          if (set.has(group)) set.delete(group);
+          else set.add(group);
+          this._selectedTipGroupsList = ALL_GROUPS.filter((g) => set.has(g));
+          this._openAccordions.clear();
+          this._renderShell();
+        }
+        return;
+      }
+      const teamChip = ev.target.closest("[data-team-chip]");
+      if (teamChip) {
+        const team = teamChip.getAttribute("data-team-chip");
+        if (team) {
+          const list = [...(this._selectedTipTeamsList || [])];
+          const idx = list.indexOf(team);
+          if (idx >= 0) list.splice(idx, 1);
+          else list.push(team);
+          list.sort((a, b) => a.localeCompare(b, "de"));
+          this._selectedTipTeamsList = list;
+          this._openAccordions.clear();
+          this._renderShell();
+        }
+        return;
+      }
+      const calendarNav = ev.target.closest("[data-calendar-nav]");
+      if (calendarNav) {
+        const dir = calendarNav.getAttribute("data-calendar-nav");
+        const view = this._calendarMonth || this._initialCalendarMonth(this._data().matches || []);
+        const d = new Date(view.year, view.month + (dir === "next" ? 1 : -1), 1);
+        this._calendarMonth = { year: d.getFullYear(), month: d.getMonth() };
+        this._renderShell();
+        return;
+      }
+      const calendarEvent = ev.target.closest("[data-calendar-event]");
+      if (calendarEvent) {
+        this._calendarSelectedMatchId = calendarEvent.getAttribute("data-calendar-event");
+        this._renderShell();
+        return;
+      }
+      const calendarClose = ev.target.closest("[data-action=calendar-close]");
+      if (calendarClose) {
+        this._calendarSelectedMatchId = null;
+        this._renderShell();
         return;
       }
       const saveTip = ev.target.closest("[data-action=save-tip]");
@@ -1450,7 +1568,7 @@ class WmTippspielCard extends HTMLElement {
 
   async _flushAndRenderNow(firstRender) {
     const captureId = this._displayedPlayerId ?? this._selectedPlayer;
-    if ((this._tab === "tips" || this._tab === "bracket") && captureId) {
+    if ((this._tab === "tips" || this._tab === "bracket" || this._tab === "calendar") && captureId) {
       this._captureDraftInputsFromDom(captureId);
     }
     await this._flushScheduledTipPersists();
@@ -1522,9 +1640,74 @@ class WmTippspielCard extends HTMLElement {
     if (this._tab === "tips" && this._tipsViewMode === "date" && this._defaultDateAccordionId) {
       return this._defaultDateAccordionId;
     }
-    const groups = normalizeGroups(this._config.show_groups);
+    if (this._tab === "tips" && this._tipsViewMode === "team") {
+      const teams = this._selectedTipTeamsList || [];
+      return teams.length === 1 ? `team-${teams[0]}` : null;
+    }
+    const groups = this._selectedTipGroupsList || normalizeGroups(this._config.show_groups);
     const preferred = groups.includes("E") ? "E" : groups[0];
     return preferred ? `group-${preferred}` : null;
+  }
+
+  _groupStageTeams(matches) {
+    const names = new Set();
+    for (const m of matches) {
+      if (!m.group) continue;
+      if (m.home && !isBracketPlaceholder(m.home)) names.add(m.home);
+      if (m.away && !isBracketPlaceholder(m.away)) names.add(m.away);
+    }
+    return [...names].sort((a, b) => a.localeCompare(b, "de"));
+  }
+
+  _initialCalendarMonth(matches) {
+    const dated = matches
+      .map((m) => parseKickoffDate(m.kickoff))
+      .filter(Boolean)
+      .sort((a, b) => a.getTime() - b.getTime());
+    if (!dated.length) {
+      const now = new Date();
+      return { year: now.getFullYear(), month: now.getMonth() };
+    }
+    const todayId = berlinTodayDayId();
+    const todayMatch = matches.find((m) => m.kickoff && kickoffDayId(m.kickoff) === todayId);
+    const ref = todayMatch ? parseKickoffDate(todayMatch.kickoff) : dated[0];
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: DISPLAY_TIMEZONE,
+      year: "numeric",
+      month: "numeric",
+    }).formatToParts(ref);
+    return {
+      year: Number(parts.find((p) => p.type === "year")?.value),
+      month: Number(parts.find((p) => p.type === "month")?.value) - 1,
+    };
+  }
+
+  _calendarMonthRange(matches) {
+    const keys = [];
+    for (const m of matches) {
+      if (!m.kickoff) continue;
+      keys.push(kickoffDayId(m.kickoff).replace("date-", ""));
+    }
+    keys.sort();
+    if (!keys.length) return null;
+    const [minY, minM] = keys[0].split("-").map(Number);
+    const [maxY, maxM] = keys[keys.length - 1].split("-").map(Number);
+    return { minKey: monthKey(minY, minM - 1), maxKey: monthKey(maxY, maxM - 1) };
+  }
+
+  _createMatchRenderer(playerTips, results, playerId) {
+    const compact = this._config.compact_mode !== false;
+    return (m) => {
+      const ctx = this._buildMatchTipContext(m, playerTips, results, playerId);
+      const { locked, homeVal, awayVal, status } = ctx;
+      const scoreHtml = locked
+        ? `<span class="score-static">${homeVal !== "" ? homeVal : "–"}</span><span class="sep">:</span><span class="score-static">${awayVal !== "" ? awayVal : "–"}</span>`
+        : `<input class="score-input" type="number" min="0" max="20" inputmode="numeric" data-match="${m.id}" data-side="home" data-kind="tip" value="${homeVal}" />
+           <span class="sep">:</span>
+           <input class="score-input" type="number" min="0" max="20" inputmode="numeric" data-match="${m.id}" data-side="away" data-kind="tip" value="${awayVal}" />`;
+      const extra = this._renderMatchExtra(m, ctx, results, { compact });
+      return this._renderMatchTeams(m, scoreHtml, extra, status, compact);
+    };
   }
 
   _isAccordionOpen(id) {
@@ -1544,11 +1727,13 @@ class WmTippspielCard extends HTMLElement {
     </details>`;
   }
 
-  _renderMatchAccordions(matches, renderMatchFn) {
+  _renderMatchAccordions(matches, renderMatchFn, selectedGroups = null) {
     const { groups, rounds } = partitionMatches(matches);
+    const groupFilter = selectedGroups ? new Set(selectedGroups) : null;
     let html = "";
 
     for (const g of ALL_GROUPS) {
+      if (groupFilter && !groupFilter.has(g)) continue;
       const list = groups.get(g) || [];
       if (!list.length) continue;
       html += this._renderAccordion(
@@ -1611,11 +1796,171 @@ class WmTippspielCard extends HTMLElement {
       .join("");
   }
 
+  _renderMatchAccordionsByTeam(matches, selectedTeams, renderMatchFn) {
+    const byTeam = new Map();
+    for (const team of selectedTeams) byTeam.set(team, []);
+    for (const m of matches) {
+      if (selectedTeams.includes(m.home)) byTeam.get(m.home).push(m);
+      if (selectedTeams.includes(m.away)) byTeam.get(m.away).push(m);
+    }
+    for (const list of byTeam.values()) {
+      list.sort(
+        (a, b) =>
+          (parseKickoffDate(a.kickoff)?.getTime() ?? 0) - (parseKickoffDate(b.kickoff)?.getTime() ?? 0)
+      );
+    }
+    return selectedTeams
+      .map((team) => {
+        const list = byTeam.get(team) || [];
+        if (!list.length) return "";
+        return this._renderAccordion(
+          `team-${team}`,
+          team,
+          list.length,
+          list.map(renderMatchFn).join("")
+        );
+      })
+      .join("");
+  }
+
   _renderTipsViewFilter(mode = "group") {
     return `<div class="tips-view-filter" role="tablist" aria-label="Spielansicht">
       <button type="button" class="view-filter-btn${mode === "group" ? " active" : ""}" data-tips-view="group" role="tab" aria-selected="${mode === "group"}">Nach Gruppe</button>
       <button type="button" class="view-filter-btn${mode === "date" ? " active" : ""}" data-tips-view="date" role="tab" aria-selected="${mode === "date"}">Nach Datum</button>
+      <button type="button" class="view-filter-btn${mode === "team" ? " active" : ""}" data-tips-view="team" role="tab" aria-selected="${mode === "team"}">Nach Team</button>
     </div>`;
+  }
+
+  _renderGroupFilterChips() {
+    const selected = new Set(this._selectedTipGroupsList || normalizeGroups(this._config.show_groups));
+    return `<div class="group-filter">${ALL_GROUPS.map(
+      (g) =>
+        `<button type="button" class="group-chip ${selected.has(g) ? "active" : ""}" data-group-chip="${g}">${g}</button>`
+    ).join("")}</div>`;
+  }
+
+  _renderTeamFilterChips(teams) {
+    const selected = new Set(this._selectedTipTeamsList || []);
+    return `<div class="team-filter">${teams
+      .map(
+        (team) =>
+          `<button type="button" class="team-chip ${selected.has(team) ? "active" : ""}" data-team-chip="${escapeHtml(team)}">${escapeHtml(team)}</button>`
+      )
+      .join("")}</div>`;
+  }
+
+  _calendarScoreLabel(match, tip, results) {
+    const res = results[match.id];
+    if (res) return `${res.home}:${res.away}`;
+    if (tip && tip.home !== "" && tip.away !== "") return `${tip.home}:${tip.away}`;
+    return null;
+  }
+
+  _renderCalendar(matches, playerTips, results, playerId, players) {
+    if (!players.length) {
+      return `<div class="empty">
+        <div class="empty-icon">👥</div>
+        <h3>Spieler fehlen</h3>
+        <p>Mitspieler in den <strong>Karten-Einstellungen</strong> unter „Spielerverwaltung“ hinzufügen.</p>
+      </div>`;
+    }
+    if (!playerId) {
+      return `<div class="empty"><div class="empty-icon">👤</div><h3>Tipper wählen</h3><p>Oben einen Spieler auswählen.</p></div>`;
+    }
+    if (!matches.length) {
+      return `<div class="empty"><div class="empty-icon">📅</div><h3>Keine Spiele</h3><p>Keine Spiele im Kalender.</p></div>`;
+    }
+
+    const matchesByDayId = new Map();
+    for (const match of matches) {
+      if (!match.kickoff) continue;
+      const id = kickoffDayId(match.kickoff);
+      if (!matchesByDayId.has(id)) matchesByDayId.set(id, []);
+      matchesByDayId.get(id).push(match);
+    }
+    for (const dayMatches of matchesByDayId.values()) {
+      dayMatches.sort(
+        (a, b) =>
+          (parseKickoffDate(a.kickoff)?.getTime() ?? 0) - (parseKickoffDate(b.kickoff)?.getTime() ?? 0)
+      );
+    }
+
+    const view = this._calendarMonth || this._initialCalendarMonth(matches);
+    this._calendarMonth = view;
+    const monthRange = this._calendarMonthRange(matches);
+    const currentKey = monthKey(view.year, view.month);
+    const canGoPrev = !monthRange || currentKey > monthRange.minKey;
+    const canGoNext = !monthRange || currentKey < monthRange.maxKey;
+    const monthLabel = new Date(view.year, view.month, 1).toLocaleDateString("de-DE", {
+      month: "long",
+      year: "numeric",
+    });
+    const calendarDays = buildCalendarMonth(view.year, view.month, matchesByDayId);
+    const tips = playerTips || {};
+
+    const grid = calendarDays
+      .map((day) => {
+        const pad = day.inMonth ? "" : "-pad";
+        const events = day.matches
+          .map((match) => {
+            const tip = tips[match.id];
+            const res = results[match.id];
+            const score = this._calendarScoreLabel(match, tip, results);
+            const locked = isPastKickoff(match.kickoff, 0);
+            const finished = Boolean(res);
+            const homeFlag = isBracketPlaceholder(match.home)
+              ? `<span class="calendar-event-abbr">H</span>`
+              : `<span class="team-flag">${teamFlag(match.home)}</span>`;
+            const awayFlag = isBracketPlaceholder(match.away)
+              ? `<span class="calendar-event-abbr">A</span>`
+              : `<span class="team-flag">${teamFlag(match.away)}</span>`;
+            return `<button type="button" class="calendar-event${locked ? " locked" : ""}${finished ? " finished" : ""}" data-calendar-event="${escapeHtml(match.id)}" title="${escapeHtml(match.home)} vs ${escapeHtml(match.away)}">
+              <span class="calendar-event-time">${formatKickoffTime(match.kickoff)}</span>
+              <span class="calendar-event-teams">
+                ${homeFlag}
+                <span class="calendar-event-score${score ? " has-value" : " empty"}${finished ? " result" : ""}">${score ?? "–"}</span>
+                ${awayFlag}
+              </span>
+            </button>`;
+          })
+          .join("");
+        return `<div class="calendar-day${day.inMonth ? "" : " outside"}${day.isToday ? " today" : ""}${day.matches.length ? " has-events" : ""}" role="gridcell">
+          <span class="calendar-day-num">${day.date.getDate()}</span>
+          ${events ? `<div class="calendar-day-events">${events}</div>` : ""}
+        </div>`;
+      })
+      .join("");
+
+    let detailHtml = "";
+    if (this._calendarSelectedMatchId) {
+      const selected = matches.find((m) => m.id === this._calendarSelectedMatchId);
+      if (selected) {
+        detailHtml = `<div class="calendar-match-detail">
+          <div class="calendar-match-detail-head">
+            <strong>Spieldetails</strong>
+            <button type="button" class="btn-secondary calendar-close-btn" data-action="calendar-close">Schließen</button>
+          </div>
+          ${this._createMatchRenderer(playerTips, results, playerId)(selected)}
+        </div>`;
+      }
+    }
+
+    return `<section class="calendar-panel">
+      <h2>Spielkalender</h2>
+      <p class="calendar-panel-hint">Alle Anstoßzeiten in MESZ. Auf ein Spiel tippen für Details und Tippeingabe.</p>
+      <div class="calendar-month">
+        <header class="calendar-month-header">
+          <button type="button" class="calendar-nav-btn" data-calendar-nav="prev" aria-label="Vorheriger Monat"${canGoPrev ? "" : " disabled"}>‹</button>
+          <h3 class="calendar-month-title">${escapeHtml(monthLabel)}</h3>
+          <button type="button" class="calendar-nav-btn" data-calendar-nav="next" aria-label="Nächster Monat"${canGoNext ? "" : " disabled"}>›</button>
+        </header>
+        <div class="calendar-weekdays" aria-hidden="true">
+          ${CALENDAR_WEEKDAYS.map((label) => `<span class="calendar-weekday">${label}</span>`).join("")}
+        </div>
+        <div class="calendar-grid" role="grid" aria-label="Spielkalender ${escapeHtml(monthLabel)}">${grid}</div>
+      </div>
+      ${detailHtml}
+    </section>`;
   }
 
   _matchColumns() {
@@ -2605,6 +2950,236 @@ class WmTippspielCard extends HTMLElement {
           gap: 8px;
         }
       }
+      .group-filter {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 20px;
+      }
+      .group-chip {
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+        border: 1px solid var(--wm-border);
+        background: var(--wm-bg-card);
+        color: var(--wm-text-muted);
+        cursor: pointer;
+        font-weight: 600;
+      }
+      .group-chip.active {
+        background: var(--wm-accent);
+        color: #0f1419;
+        border-color: var(--wm-accent);
+      }
+      .team-filter {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 20px;
+        max-height: 220px;
+        overflow-y: auto;
+        padding: 4px 2px;
+      }
+      .team-chip {
+        padding: 6px 12px;
+        border-radius: 8px;
+        border: 1px solid var(--wm-border);
+        background: var(--wm-bg-card);
+        color: var(--wm-text-muted);
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 0.85rem;
+        line-height: 1.3;
+      }
+      .team-chip.active {
+        background: var(--wm-accent);
+        color: #0f1419;
+        border-color: var(--wm-accent);
+      }
+      .empty-hint {
+        margin: 0 0 16px;
+        text-align: center;
+        color: var(--wm-text-muted);
+        font-size: 0.9rem;
+      }
+      .calendar-panel h2 {
+        margin: 0 0 12px;
+        font-size: 1.1rem;
+      }
+      .calendar-panel-hint {
+        margin: 0 0 16px;
+        color: var(--wm-text-muted);
+        font-size: 0.9rem;
+      }
+      .calendar-month {
+        background: var(--wm-bg-card);
+        border: 1px solid var(--wm-border);
+        border-radius: var(--wm-radius);
+        overflow: hidden;
+      }
+      .calendar-month-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--wm-border);
+      }
+      .calendar-month-title {
+        margin: 0;
+        flex: 1;
+        text-align: center;
+        font-size: 1.05rem;
+        color: var(--wm-accent);
+        text-transform: capitalize;
+      }
+      .calendar-nav-btn {
+        width: 36px;
+        height: 36px;
+        border: 1px solid var(--wm-border);
+        border-radius: 8px;
+        background: var(--wm-bg-elevated);
+        color: var(--wm-text);
+        font-size: 1.4rem;
+        line-height: 1;
+        cursor: pointer;
+        flex-shrink: 0;
+      }
+      .calendar-nav-btn:hover:not(:disabled) {
+        border-color: var(--wm-accent);
+        color: var(--wm-accent);
+      }
+      .calendar-nav-btn:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+      }
+      .calendar-weekdays {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        border-bottom: 1px solid var(--wm-border);
+        background: var(--wm-bg-elevated);
+      }
+      .calendar-weekday {
+        padding: 8px 4px;
+        text-align: center;
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: var(--wm-text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .calendar-grid {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        grid-auto-rows: minmax(96px, auto);
+      }
+      .calendar-day {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-height: 96px;
+        padding: 6px;
+        border-right: 1px solid var(--wm-border);
+        border-bottom: 1px solid var(--wm-border);
+        background: var(--wm-bg-card);
+      }
+      .calendar-day:nth-child(7n) { border-right: none; }
+      .calendar-day.outside {
+        background: color-mix(in srgb, var(--wm-bg) 55%, var(--wm-bg-card));
+        opacity: 0.72;
+      }
+      .calendar-day.today .calendar-day-num {
+        background: var(--wm-accent);
+        color: #0f1419;
+      }
+      .calendar-day.has-events {
+        background: color-mix(in srgb, var(--wm-accent) 4%, var(--wm-bg-card));
+      }
+      .calendar-day-num {
+        align-self: flex-start;
+        min-width: 24px;
+        height: 24px;
+        padding: 0 6px;
+        border-radius: 999px;
+        font-size: 0.82rem;
+        font-weight: 700;
+        line-height: 24px;
+        text-align: center;
+      }
+      .calendar-day-events {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        min-width: 0;
+        flex: 1;
+        overflow-y: auto;
+      }
+      .calendar-event {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        width: 100%;
+        padding: 4px 5px;
+        border: 1px solid var(--wm-border);
+        border-radius: 6px;
+        background: var(--wm-bg-elevated);
+        cursor: pointer;
+        text-align: left;
+        color: inherit;
+        font: inherit;
+      }
+      .calendar-event:hover {
+        border-color: color-mix(in srgb, var(--wm-accent) 45%, var(--wm-border));
+        background: color-mix(in srgb, var(--wm-accent) 8%, var(--wm-bg-elevated));
+      }
+      .calendar-event-time {
+        font-size: 0.65rem;
+        font-weight: 700;
+        color: var(--wm-accent);
+      }
+      .calendar-event-teams {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        min-width: 0;
+      }
+      .calendar-event-teams .team-flag-img {
+        width: 18px;
+        height: 13px;
+      }
+      .calendar-event-score {
+        font-size: 0.68rem;
+        font-weight: 800;
+        color: var(--wm-text-muted);
+        min-width: 1.4em;
+        text-align: center;
+      }
+      .calendar-event-score.has-value { color: var(--wm-accent); }
+      .calendar-event-score.result { color: var(--wm-accent-2); }
+      .calendar-event-abbr {
+        font-size: 0.62rem;
+        font-weight: 700;
+        color: var(--wm-text-muted);
+      }
+      .calendar-match-detail {
+        margin-top: 20px;
+        padding-top: 16px;
+        border-top: 1px solid var(--wm-border);
+      }
+      .calendar-match-detail-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+      .calendar-close-btn {
+        width: auto;
+        margin-top: 0;
+        padding: 6px 12px;
+        font-size: 0.78rem;
+      }
       .empty {
         text-align: center;
         padding: 28px 16px;
@@ -2649,6 +3224,10 @@ class WmTippspielCard extends HTMLElement {
         .standings-table { min-width: 0; font-size: 0.82rem; }
         .standings-table th,
         .standings-table td { padding: 8px 6px; }
+        .calendar-grid { grid-auto-rows: minmax(72px, auto); }
+        .calendar-day { min-height: 72px; }
+        .team-chip { font-size: 0.78rem; }
+        .group-chip { width: 36px; height: 36px; }
         .match-row-compact .teams-inline,
         .match .teams {
           grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
@@ -2724,7 +3303,7 @@ class WmTippspielCard extends HTMLElement {
     if (this._tab === "matches") this._tab = "bracket";
     if (this._tab === "players") this._tab = "tips";
     const captureId = this._displayedPlayerId ?? this._selectedPlayer;
-    if ((this._tab === "tips" || this._tab === "bracket") && captureId) {
+    if ((this._tab === "tips" || this._tab === "bracket" || this._tab === "calendar") && captureId) {
       this._captureDraftInputsFromDom(captureId);
     }
     const cfg = this._config;
@@ -2750,6 +3329,8 @@ class WmTippspielCard extends HTMLElement {
       if (this._tab === "standings") {
         this._detectStandingsFlash(standings);
         body = this._renderStandings(standings);
+      } else if (this._tab === "calendar") {
+        body = this._renderCalendar(this._filteredMatches(matches), playerTips, results, playerId, players);
       } else if (this._tab === "bracket") body = this._renderBracket(knockoutMatches, playerTips, results, playerId, players);
       else body = this._renderTips(groupMatches, playerTips, results, playerId, players, groupTables);
     }
@@ -2799,7 +3380,7 @@ class WmTippspielCard extends HTMLElement {
       </ha-card>
     `;
 
-    if (this._tab === "tips" || this._tab === "bracket") {
+    if (this._tab === "tips" || this._tab === "bracket" || this._tab === "calendar") {
       this.shadowRoot.querySelectorAll("[data-action=save-tip]").forEach((btn) => {
         this._syncTipSaveButton(btn.getAttribute("data-match"));
       });
@@ -3218,32 +3799,36 @@ class WmTippspielCard extends HTMLElement {
       return `<div class="empty"><div class="empty-icon">⚽</div><h3>Keine Spiele</h3><p>Gruppenfilter in den Einstellungen anpassen.</p></div>`;
     }
 
-    const compact = this._config.compact_mode !== false;
     const tablesHtml =
       this._config.show_group_tables !== false ? this._renderGroupTables(groupTables) : "";
-
-    const renderMatchFn = (m) => {
-      const ctx = this._buildMatchTipContext(m, playerTips, results, playerId);
-      const { locked, homeVal, awayVal, status } = ctx;
-
-      const scoreHtml = locked
-        ? `<span class="score-static">${homeVal !== "" ? homeVal : "–"}</span><span class="sep">:</span><span class="score-static">${awayVal !== "" ? awayVal : "–"}</span>`
-        : `<input class="score-input" type="number" min="0" max="20" inputmode="numeric" data-match="${m.id}" data-side="home" data-kind="tip" value="${homeVal}" />
-           <span class="sep">:</span>
-           <input class="score-input" type="number" min="0" max="20" inputmode="numeric" data-match="${m.id}" data-side="away" data-kind="tip" value="${awayVal}" />`;
-
-      const extra = this._renderMatchExtra(m, ctx, results, { compact });
-      return this._renderMatchTeams(m, scoreHtml, extra, status, compact);
-    };
-
-    const viewMode = this._tipsViewMode === "date" ? "date" : "group";
+    const renderMatchFn = this._createMatchRenderer(playerTips, results, playerId);
+    const viewMode =
+      this._tipsViewMode === "date" ? "date" : this._tipsViewMode === "team" ? "team" : "group";
     const filterHtml = this._renderTipsViewFilter(viewMode);
-    const accordions =
-      viewMode === "date"
-        ? this._renderMatchAccordionsByDate(matches, renderMatchFn)
-        : this._renderMatchAccordions(matches, renderMatchFn);
 
-    return `${tablesHtml}${filterHtml}${accordions}`;
+    let chipsHtml = "";
+    let accordions = "";
+    if (viewMode === "group") {
+      chipsHtml = this._renderGroupFilterChips();
+      const selectedGroups = this._selectedTipGroupsList || normalizeGroups(this._config.show_groups);
+      const filtered = matches.filter((m) =>
+        selectedGroups.includes(String(m.group || "").toUpperCase())
+      );
+      accordions = filtered.length
+        ? this._renderMatchAccordions(filtered, renderMatchFn, selectedGroups)
+        : `<p class="empty-hint">Keine Spiele für die aktuelle Auswahl.</p>`;
+    } else if (viewMode === "date") {
+      accordions = this._renderMatchAccordionsByDate(matches, renderMatchFn);
+    } else {
+      const teams = this._groupStageTeams(matches);
+      chipsHtml = this._renderTeamFilterChips(teams);
+      const selectedTeams = this._selectedTipTeamsList || [];
+      accordions = selectedTeams.length
+        ? this._renderMatchAccordionsByTeam(matches, selectedTeams, renderMatchFn)
+        : `<p class="empty-hint">Wähle ein oder mehrere Teams aus.</p>`;
+    }
+
+    return `${tablesHtml}${filterHtml}${chipsHtml}${accordions}`;
   }
 
   async _saveTip(matchId, options = {}) {
