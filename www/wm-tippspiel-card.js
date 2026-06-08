@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.6.4";
+const WM_TIPPSPIEL_CARD_VERSION = "1.6.6";
 
 const ALL_GROUPS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 const KNOCKOUT_ROUNDS = [
@@ -56,42 +56,6 @@ const TEAM_ISO = {
   Tschechien: "cz",
 };
 
-/** FIFA-typische 3-Buchstaben-Kürzel für kompakte Mobile-Ansicht. */
-const TEAM_ABBR = {
-  Mexiko: "MEX",
-  "Südafrika": "RSA",
-  "Südkorea": "KOR",
-  Kanada: "CAN",
-  Katar: "QAT",
-  Schweiz: "SUI",
-  Brasilien: "BRA",
-  Marokko: "MAR",
-  Haiti: "HTI",
-  Schottland: "SCO",
-  USA: "USA",
-  Paraguay: "PAR",
-  Australien: "AUS",
-  Deutschland: "GER",
-  Curaçao: "CUW",
-  "Elfenbeinküste": "CIV",
-  Ecuador: "ECU",
-  Niederlande: "NED",
-  Japan: "JPN",
-  Tunesien: "TUN",
-  Belgien: "BEL",
-  Ägypten: "EGY",
-  Iran: "IRN",
-  Neuseeland: "NZL",
-  Spanien: "ESP",
-  "Kap Verde": "CPV",
-  "Saudi-Arabien": "KSA",
-  Uruguay: "URU",
-  "Bosnien und Herzegowina": "BIH",
-  Schweden: "SWE",
-  Türkei: "TUR",
-  Tschechien: "CZE",
-};
-
 function escapeHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({
     "&": "&amp;",
@@ -112,16 +76,9 @@ function teamFlag(name) {
   return `<img class="team-flag-img" src="${src}" alt="${label}" title="${label}" loading="lazy" />`;
 }
 
-function teamAbbr(name) {
-  if (!name) return "?";
-  if (TEAM_ABBR[name]) return TEAM_ABBR[name];
-  return String(name).slice(0, 3).toUpperCase();
-}
-
 function teamLabel(name) {
   const full = escapeHtml(name || "Team");
-  const short = escapeHtml(teamAbbr(name));
-  return `<span class="team-label" title="${full}"><span class="team-full">${full}</span><span class="team-short">${short}</span></span>`;
+  return `<span class="team-label" title="${full}">${full}</span>`;
 }
 
 function teamDisplayName(name) {
@@ -346,8 +303,16 @@ class WmTippspielCardEditor extends HTMLElement {
       const key = el.getAttribute("data-key");
       if (key === "new_player") {
         el.value = this._newPlayerName || "";
-        el.addEventListener("input", (ev) => {
-          this._newPlayerName = ev.target.value;
+        const onNameInput = (ev) => {
+          this._newPlayerName = ev.detail?.value ?? ev.target?.value ?? "";
+        };
+        el.addEventListener("input", onNameInput);
+        el.addEventListener("value-changed", onNameInput);
+        el.addEventListener("keydown", (ev) => {
+          if (ev.key === "Enter") {
+            ev.preventDefault();
+            void this._addPlayer();
+          }
         });
         return;
       }
@@ -422,8 +387,8 @@ class WmTippspielCardEditor extends HTMLElement {
                   <div class="ed-player-meta">Alle Tipps dieses Spielers werden gelöscht.</div>
                 </div>
                 <div class="ed-player-actions">
-                  <mwc-button dense data-action="ed-confirm-remove" data-player-id="${escapeHtml(p.id)}">Ja, löschen</mwc-button>
-                  <mwc-button dense data-action="ed-cancel-remove">Abbrechen</mwc-button>
+                  <button type="button" class="ed-btn ed-btn-danger" data-action="ed-confirm-remove" data-player-id="${escapeHtml(p.id)}">Ja, löschen</button>
+                  <button type="button" class="ed-btn" data-action="ed-cancel-remove">Abbrechen</button>
                 </div>
               </div>`;
             }
@@ -432,7 +397,7 @@ class WmTippspielCardEditor extends HTMLElement {
               <span class="ed-player-meta">ID ${escapeHtml(p.id)}</span>
               ${
                 cfg.admin
-                  ? `<mwc-button class="ed-remove" dense data-action="ed-remove-player" data-player-id="${escapeHtml(p.id)}">Entfernen</mwc-button>`
+                  ? `<button type="button" class="ed-btn ed-btn-danger ed-remove" data-action="ed-remove-player" data-player-id="${escapeHtml(p.id)}">Entfernen</button>`
                   : ""
               }
             </div>`;
@@ -462,14 +427,14 @@ class WmTippspielCardEditor extends HTMLElement {
         <div class="ed-section">
           <div class="ed-title">Spielerverwaltung</div>
           <p class="ed-hint">Mitspieler werden in der Integration gespeichert und stehen auf allen Geräten zur Verfügung. Standard-Tipper per Klick auf den Namen wählen.</p>
-          <div class="ed-player-list">${playerList}</div>
-          <div class="ed-add-row">
+          <div class="ed-add-box">
             <ha-textfield
               label="Neuer Spieler"
               data-key="new_player"
             ></ha-textfield>
-            <mwc-button raised label="Hinzufügen" data-action="add-player"></mwc-button>
+            <button type="button" class="ed-btn ed-btn-primary" data-action="add-player">+ Hinzufügen</button>
           </div>
+          <div class="ed-player-list">${playerList}</div>
           ${!cfg.admin ? `<p class="ed-hint">Spieler entfernen ist nur mit aktiviertem Admin-Modus (unten bei Anzeige) möglich.</p>` : ""}
         </div>
 
@@ -598,11 +563,42 @@ class WmTippspielCardEditor extends HTMLElement {
           background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.15);
           font-weight: 600;
         }
-        .ed-add-row {
+        .ed-add-row,
+        .ed-add-box {
           display: grid;
           grid-template-columns: 1fr auto;
           gap: 8px;
           align-items: end;
+          margin-bottom: 14px;
+          padding: 10px 12px;
+          border-radius: 10px;
+          background: var(--card-background-color);
+          border: 1px solid var(--divider-color);
+        }
+        .ed-add-box ha-textfield {
+          margin-bottom: 0;
+        }
+        .ed-btn {
+          border: 1px solid var(--divider-color);
+          border-radius: 8px;
+          padding: 8px 14px;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          background: var(--card-background-color);
+          color: var(--primary-text-color);
+          font-family: inherit;
+          white-space: nowrap;
+        }
+        .ed-btn-primary {
+          border: none;
+          background: var(--primary-color);
+          color: var(--text-primary-color, #fff);
+          padding: 10px 16px;
+        }
+        .ed-btn-danger {
+          color: var(--error-color, #f44336);
+          border-color: rgba(244, 67, 54, 0.45);
         }
         .ed-groups {
           display: grid;
@@ -1321,25 +1317,63 @@ class WmTippspielCard extends HTMLElement {
       }
       .match-row-compact {
         display: flex;
-        align-items: center;
-        gap: 8px;
-        flex-wrap: wrap;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 6px;
       }
       .match-row-compact .teams-inline {
-        display: flex;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
         align-items: center;
         gap: 6px;
-        flex: 1;
+        width: 100%;
         min-width: 0;
         font-size: 0.78rem;
         font-weight: 700;
+      }
+      .match-row-compact .team-side {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        min-width: 0;
+        overflow: hidden;
+      }
+      .match-row-compact .team-side.home {
+        justify-content: flex-start;
+      }
+      .match-row-compact .team-side.away {
+        justify-content: flex-end;
+        flex-direction: row-reverse;
+      }
+      .match-row-compact .team-name-cell {
+        min-width: 0;
+        overflow: hidden;
+      }
+      .match-row-compact .team-label,
+      .match-row-compact .team-name {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        line-height: 1.2;
+      }
+      .match-row-compact .team-flag {
+        flex-shrink: 0;
       }
       .match-row-compact .team-flag-img {
         width: 22px;
         height: 15px;
       }
       .match-row-compact .score-box {
+        flex-shrink: 0;
         padding: 2px 6px;
+        gap: 4px;
+      }
+      .match-row-compact .match-extra {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        flex-wrap: wrap;
         gap: 4px;
       }
       .match-row-compact .score-input {
@@ -1363,12 +1397,14 @@ class WmTippspielCard extends HTMLElement {
       .match-status-badge.status-soon { background: rgba(234,179,8,0.18); color: #fde047; }
       .match-status-badge.status-locked { background: rgba(148,163,184,0.15); color: #cbd5e1; }
       .match-status-badge.status-exact { background: rgba(251,191,36,0.2); color: #fde68a; border: 1px solid rgba(251,191,36,0.45); }
-      .team-label .team-short { display: none; }
-      .team-label .team-full { display: inline; }
-      .team-short-label {
-        font-weight: 800;
-        font-size: 0.72rem;
-        letter-spacing: 0.04em;
+      .team-label {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .bracket-label .team-label {
+        display: block;
+        max-width: 100%;
       }
       .group-tables {
         display: grid;
@@ -1917,10 +1953,23 @@ class WmTippspielCard extends HTMLElement {
       }
       @media (max-width: 768px) {
         .match-status-badge.status-saved { display: none; }
-        .team-label .team-full { display: none; }
-        .team-label .team-short { display: inline; }
         .match-row-compact .teams-inline {
-          font-size: 0.72rem;
+          font-size: 0.7rem;
+          gap: 4px;
+        }
+        .match-row-compact .team-flag-img {
+          width: 20px;
+          height: 14px;
+        }
+        .match-row-compact .score-input {
+          width: 28px;
+          height: 28px;
+          font-size: 0.78rem;
+        }
+        .bracket-label {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
       }
     `;
@@ -2182,13 +2231,17 @@ class WmTippspielCard extends HTMLElement {
       return `<div class="match compact${statusClass}" data-match-id="${m.id}">
         <div class="match-row-compact">
           <div class="teams-inline">
-            ${teamFlag(m.home)}
-            <span>${teamDisplayName(m.home)}</span>
+            <div class="team-side home">
+              <span class="team-flag">${teamFlag(m.home)}</span>
+              <span class="team-name-cell">${teamDisplayName(m.home)}</span>
+            </div>
             <div class="score-box">${scoreHtml}</div>
-            <span>${teamDisplayName(m.away)}</span>
-            ${teamFlag(m.away)}
+            <div class="team-side away">
+              <span class="team-flag">${teamFlag(m.away)}</span>
+              <span class="team-name-cell">${teamDisplayName(m.away)}</span>
+            </div>
           </div>
-          ${extra}
+          ${extra ? `<div class="match-extra">${extra}</div>` : ""}
         </div>
       </div>`;
     }
