@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.6.10";
+const WM_TIPPSPIEL_CARD_VERSION = "1.6.11";
 const AUTO_SAVE_DELAY_MS = 400;
 const MATCH_TIP_STATUS_CLASSES = [
   "tip-status-saved",
@@ -730,13 +730,7 @@ class WmTippspielCard extends HTMLElement {
       }
       const playerBtn = ev.target.closest(".player-chip[data-player-id]");
       if (playerBtn) {
-        const nextId = playerBtn.getAttribute("data-player-id");
-        if (this._selectedPlayer && this._selectedPlayer !== nextId) {
-          this._captureDraftInputsFromDom(this._selectedPlayer);
-          this._flushScheduledTipPersists();
-        }
-        this._selectedPlayer = nextId;
-        this._renderShell();
+        void this._switchPlayer(playerBtn.getAttribute("data-player-id"));
         return;
       }
       const saveTip = ev.target.closest("[data-action=save-tip]");
@@ -777,17 +771,17 @@ class WmTippspielCard extends HTMLElement {
         return;
       }
       if (!this._selectedPlayer) return;
-      const bucket = this._draftTipsForPlayer(this._selectedPlayer);
+      const playerId = this._selectedPlayer;
+      const bucket = this._draftTipsForPlayer(playerId);
       bucket[matchId] = bucket[matchId] || {};
       bucket[matchId][side] = input.value;
       this._syncMatchTipVisuals(matchId);
       if (this._config.auto_save_tips !== false) {
-        if (this._tipInputsEmpty(matchId) && this._getSavedTip(matchId)) {
-          clearTimeout(this._autoSaveTimers[matchId]);
-          delete this._autoSaveTimers[matchId];
-          void this._persistTip(matchId, { silent: true });
+        if (this._tipInputsEmpty(matchId, playerId) && this._getSavedTip(matchId, playerId)) {
+          this._clearAutoSaveTimer(matchId);
+          void this._persistTip(matchId, { silent: true, playerId });
         } else {
-          this._scheduleAutoSaveTip(matchId);
+          this._scheduleAutoSaveTip(matchId, playerId);
         }
       } else {
         this._syncTipSaveButton(matchId);
@@ -801,7 +795,7 @@ class WmTippspielCard extends HTMLElement {
         if (!input) return;
         const matchId = input.getAttribute("data-match");
         if (!matchId || !this._selectedPlayer || this._config.auto_save_tips === false) return;
-        this._persistTip(matchId, { silent: true });
+        void this._persistTip(matchId, { silent: true, playerId: this._selectedPlayer });
       },
       true
     );
@@ -902,9 +896,8 @@ class WmTippspielCard extends HTMLElement {
     return filtered;
   }
 
-  _applySavedTip(matchId, home, away) {
-    if (!this._selectedPlayer) return;
-    const playerId = this._selectedPlayer;
+  _applySavedTip(matchId, home, away, playerId = this._selectedPlayer) {
+    if (!playerId) return;
     const ent = this._state?.attributes?.player_entities?.[playerId];
     if (ent && this._hass?.states[ent]) {
       const st = this._hass.states[ent];
@@ -922,9 +915,8 @@ class WmTippspielCard extends HTMLElement {
     this._stateFingerprintCache = this._stateFingerprint(this._state);
   }
 
-  _applyClearedTip(matchId) {
-    if (!this._selectedPlayer) return;
-    const playerId = this._selectedPlayer;
+  _applyClearedTip(matchId, playerId = this._selectedPlayer) {
+    if (!playerId) return;
     const ent = this._state?.attributes?.player_entities?.[playerId];
     if (ent && this._hass?.states[ent]) {
       const st = this._hass.states[ent];
@@ -1000,37 +992,70 @@ class WmTippspielCard extends HTMLElement {
     };
   }
 
-  _readTipFieldValues(matchId) {
-    const draft = this._getDraftTip(this._selectedPlayer, matchId);
+  _persistKey(playerId, matchId) {
+    return `${playerId}::${matchId}`;
+  }
+
+  _clearAutoSaveTimer(matchId) {
+    const entry = this._autoSaveTimers?.[matchId];
+    if (!entry) return;
+    clearTimeout(entry.handle ?? entry);
+    delete this._autoSaveTimers[matchId];
+  }
+
+  _readTipFieldValues(matchId, playerId = this._selectedPlayer) {
+    const draft = this._getDraftTip(playerId, matchId);
     const hasDraft = draft && Object.keys(draft).length > 0;
-    const { homeIn, awayIn } = this._tipInputElements(matchId);
-    let home = homeIn?.value ?? "";
-    let away = awayIn?.value ?? "";
+    let home = "";
+    let away = "";
+    if (playerId === this._selectedPlayer) {
+      const { homeIn, awayIn } = this._tipInputElements(matchId);
+      home = homeIn?.value ?? "";
+      away = awayIn?.value ?? "";
+    }
     if (hasDraft) {
       if (draft.home !== undefined) home = draft.home;
       if (draft.away !== undefined) away = draft.away;
+    } else if (playerId !== this._selectedPlayer) {
+      const saved = this._playerTipsFor(playerId)[matchId];
+      if (saved) {
+        home = saved.home ?? "";
+        away = saved.away ?? "";
+      }
     }
     return { home, away };
   }
 
-  _tipInputsValid(matchId) {
-    const { home, away } = this._readTipFieldValues(matchId);
+  _tipInputsValid(matchId, playerId = this._selectedPlayer) {
+    const { home, away } = this._readTipFieldValues(matchId, playerId);
     return home !== "" && away !== "" && !Number.isNaN(Number(home)) && !Number.isNaN(Number(away));
   }
 
-  _tipInputsEmpty(matchId) {
-    const { home, away } = this._readTipFieldValues(matchId);
+  _tipInputsEmpty(matchId, playerId = this._selectedPlayer) {
+    const { home, away } = this._readTipFieldValues(matchId, playerId);
     return home === "" && away === "";
   }
 
-  _flushScheduledTipPersists() {
-    if (!this._autoSaveEnabled() || !this._selectedPlayer) return;
-    const pending = Object.keys(this._autoSaveTimers || {});
-    for (const matchId of pending) {
-      clearTimeout(this._autoSaveTimers[matchId]);
-      delete this._autoSaveTimers[matchId];
-      void this._persistTip(matchId, { silent: true });
+  async _flushScheduledTipPersists() {
+    if (!this._autoSaveEnabled()) return;
+    const pending = Object.entries(this._autoSaveTimers || {});
+    for (const [matchId, entry] of pending) {
+      const playerId = entry?.playerId ?? this._selectedPlayer;
+      this._clearAutoSaveTimer(matchId);
+      if (!playerId) continue;
+      await this._persistTip(matchId, { silent: true, playerId });
     }
+  }
+
+  async _switchPlayer(nextId) {
+    if (!nextId) return;
+    const prevId = this._selectedPlayer;
+    if (prevId && prevId !== nextId) {
+      this._captureDraftInputsFromDom(prevId);
+      await this._flushScheduledTipPersists();
+    }
+    this._selectedPlayer = nextId;
+    this._renderShell();
   }
 
   _resetTipSaveBadge(matchId) {
@@ -1105,8 +1130,7 @@ class WmTippspielCard extends HTMLElement {
     return this._config.auto_save_tips !== false;
   }
 
-  _getSavedTip(matchId) {
-    const playerId = this._selectedPlayer;
+  _getSavedTip(matchId, playerId = this._selectedPlayer) {
     if (!playerId) return null;
     return this._playerTipsFor(playerId)[matchId] || null;
   }
@@ -1120,40 +1144,47 @@ class WmTippspielCard extends HTMLElement {
     return (a.tips || {})[playerId] || {};
   }
 
-  _scheduleAutoSaveTip(matchId) {
-    if (!this._autoSaveEnabled() || !this._selectedPlayer) return;
+  _scheduleAutoSaveTip(matchId, playerId = this._selectedPlayer) {
+    if (!this._autoSaveEnabled() || !playerId) return;
     const match = (this._state?.attributes?.matches || []).find((m) => m.id === matchId);
     if (match && isPastKickoff(match.kickoff, 0)) return;
-    clearTimeout(this._autoSaveTimers[matchId]);
-    const canSave = this._tipInputsValid(matchId);
-    const canClear = this._tipInputsEmpty(matchId) && this._getSavedTip(matchId);
+    this._clearAutoSaveTimer(matchId);
+    const canSave = this._tipInputsValid(matchId, playerId);
+    const canClear = this._tipInputsEmpty(matchId, playerId) && this._getSavedTip(matchId, playerId);
     if (!canSave && !canClear) {
       this._resetTipSaveBadge(matchId);
       return;
     }
     this._setTipSaveStatus(matchId, "pending");
-    this._autoSaveTimers[matchId] = setTimeout(() => {
-      delete this._autoSaveTimers[matchId];
-      this._persistTip(matchId, { silent: true });
-    }, AUTO_SAVE_DELAY_MS);
+    this._autoSaveTimers[matchId] = {
+      playerId,
+      handle: setTimeout(() => {
+        delete this._autoSaveTimers[matchId];
+        void this._persistTip(matchId, { silent: true, playerId });
+      }, AUTO_SAVE_DELAY_MS),
+    };
   }
 
   async _persistTip(matchId, options = {}) {
-    if (this._persistInFlight[matchId]) return;
-    clearTimeout(this._autoSaveTimers[matchId]);
-    delete this._autoSaveTimers[matchId];
-    this._persistInFlight[matchId] = true;
+    const playerId = options.playerId ?? this._selectedPlayer;
+    if (!playerId) return;
+    const inflightKey = this._persistKey(playerId, matchId);
+    if (this._persistInFlight[inflightKey]) return;
+    this._clearAutoSaveTimer(matchId);
+    this._persistInFlight[inflightKey] = true;
     try {
-      if (this._tipInputsValid(matchId)) {
-        return await this._saveTip(matchId, options);
+      if (this._tipInputsValid(matchId, playerId)) {
+        return await this._saveTip(matchId, { ...options, playerId });
       }
-      if (this._tipInputsEmpty(matchId) && this._getSavedTip(matchId)) {
-        return await this._clearTip(matchId, options);
+      if (this._tipInputsEmpty(matchId, playerId) && this._getSavedTip(matchId, playerId)) {
+        return await this._clearTip(matchId, { ...options, playerId });
       }
-      this._syncMatchTipVisuals(matchId);
-      this._resetTipSaveBadge(matchId);
+      if (playerId === this._selectedPlayer) {
+        this._syncMatchTipVisuals(matchId);
+        this._resetTipSaveBadge(matchId);
+      }
     } finally {
-      delete this._persistInFlight[matchId];
+      delete this._persistInFlight[inflightKey];
     }
   }
 
@@ -1214,10 +1245,18 @@ class WmTippspielCard extends HTMLElement {
     this._ensurePlayer();
     this._pruneDraftTips();
     if (changed || !this._shellReady) {
-      this._flushScheduledTipPersists();
-      this._renderShell();
-      this._shellReady = true;
+      const firstRender = !this._shellReady;
+      void this._flushAndRender(firstRender);
     }
+  }
+
+  async _flushAndRender(firstRender) {
+    if ((this._tab === "tips" || this._tab === "bracket") && this._selectedPlayer) {
+      this._captureDraftInputsFromDom(this._selectedPlayer);
+    }
+    await this._flushScheduledTipPersists();
+    this._renderShell();
+    if (firstRender) this._shellReady = true;
   }
 
   getCardSize() {
@@ -2750,7 +2789,8 @@ class WmTippspielCard extends HTMLElement {
   async _saveTip(matchId, options = {}) {
     const btn = options.btn || null;
     const silent = Boolean(options.silent);
-    if (!this._selectedPlayer) {
+    const playerId = options.playerId ?? this._selectedPlayer;
+    if (!playerId) {
       if (!silent) this._showToast("Bitte zuerst einen Spieler auswählen.", "error");
       return;
     }
@@ -2762,10 +2802,9 @@ class WmTippspielCard extends HTMLElement {
       return;
     }
 
-    clearTimeout(this._autoSaveTimers[matchId]);
-    delete this._autoSaveTimers[matchId];
+    this._clearAutoSaveTimer(matchId);
 
-    const { home, away } = this._readTipFieldValues(matchId);
+    const { home, away } = this._readTipFieldValues(matchId, playerId);
     if (home === "" || away === "" || Number.isNaN(Number(home)) || Number.isNaN(Number(away))) {
       if (!silent) this._showToast("Bitte beide Tore eingeben.", "error");
       return;
@@ -2773,42 +2812,50 @@ class WmTippspielCard extends HTMLElement {
 
     const homeNum = Number(home);
     const awayNum = Number(away);
-    const saved = this._getSavedTip(matchId);
+    const saved = this._getSavedTip(matchId, playerId);
     if (saved && saved.home === homeNum && saved.away === awayNum) {
-      this._setTipSaveStatus(matchId, "saved");
-      this._syncMatchTipVisuals(matchId);
+      if (playerId === this._selectedPlayer) {
+        this._setTipSaveStatus(matchId, "saved");
+        this._syncMatchTipVisuals(matchId);
+      }
       return;
     }
 
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = "Speichern…";
-    } else {
-      this._setTipSaveStatus(matchId, "saving");
+    if (playerId === this._selectedPlayer) {
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = "Speichern…";
+      } else {
+        this._setTipSaveStatus(matchId, "saving");
+      }
     }
 
     try {
       await this._callService("set_tip", {
-        player_id: this._selectedPlayer,
+        player_id: playerId,
         match_id: matchId,
         home: homeNum,
         away: awayNum,
       });
-      this._applySavedTip(matchId, homeNum, awayNum);
-      const playerDrafts = this._draftTipsForPlayer(this._selectedPlayer);
+      this._applySavedTip(matchId, homeNum, awayNum, playerId);
+      const playerDrafts = this._draftTipsForPlayer(playerId);
       delete playerDrafts[matchId];
-      this._setTipSaveStatus(matchId, "saved");
-      this._syncMatchTipVisuals(matchId);
-      if (!silent) {
-        this._renderShell();
-        this._showToast("Tipp gespeichert ✓", "success");
+      if (playerId === this._selectedPlayer) {
+        this._setTipSaveStatus(matchId, "saved");
+        this._syncMatchTipVisuals(matchId);
+        if (!silent) {
+          this._renderShell();
+          this._showToast("Tipp gespeichert ✓", "success");
+        }
       }
     } catch (err) {
       console.error("[wm-tippspiel-card] set_tip failed:", err);
-      this._setTipSaveStatus(matchId, "error");
-      if (!silent) this._showToast(`Speichern fehlgeschlagen: ${err?.message || err}`, "error");
+      if (playerId === this._selectedPlayer) {
+        this._setTipSaveStatus(matchId, "error");
+        if (!silent) this._showToast(`Speichern fehlgeschlagen: ${err?.message || err}`, "error");
+      }
     } finally {
-      if (btn) {
+      if (btn && playerId === this._selectedPlayer) {
         btn.disabled = false;
         btn.textContent = "Tipp speichern";
       }
@@ -2817,7 +2864,8 @@ class WmTippspielCard extends HTMLElement {
 
   async _clearTip(matchId, options = {}) {
     const silent = Boolean(options.silent);
-    if (!this._selectedPlayer) {
+    const playerId = options.playerId ?? this._selectedPlayer;
+    if (!playerId) {
       if (!silent) this._showToast("Bitte zuerst einen Spieler auswählen.", "error");
       return;
     }
@@ -2829,26 +2877,32 @@ class WmTippspielCard extends HTMLElement {
       return;
     }
 
-    if (!this._getSavedTip(matchId)) {
-      this._syncMatchTipVisuals(matchId);
-      this._resetTipSaveBadge(matchId);
+    if (!this._getSavedTip(matchId, playerId)) {
+      if (playerId === this._selectedPlayer) {
+        this._syncMatchTipVisuals(matchId);
+        this._resetTipSaveBadge(matchId);
+      }
       return;
     }
 
-    this._setTipSaveStatus(matchId, "saving");
+    if (playerId === this._selectedPlayer) {
+      this._setTipSaveStatus(matchId, "saving");
+    }
     try {
       await this._callService("clear_tip", {
-        player_id: this._selectedPlayer,
+        player_id: playerId,
         match_id: matchId,
       });
-      this._applyClearedTip(matchId);
-      const playerDrafts = this._draftTipsForPlayer(this._selectedPlayer);
+      this._applyClearedTip(matchId, playerId);
+      const playerDrafts = this._draftTipsForPlayer(playerId);
       delete playerDrafts[matchId];
-      this._resetTipSaveBadge(matchId);
-      this._syncMatchTipVisuals(matchId);
-      if (!silent) {
-        this._renderShell();
-        this._showToast("Tipp entfernt", "success");
+      if (playerId === this._selectedPlayer) {
+        this._resetTipSaveBadge(matchId);
+        this._syncMatchTipVisuals(matchId);
+        if (!silent) {
+          this._renderShell();
+          this._showToast("Tipp entfernt", "success");
+        }
       }
     } catch (err) {
       console.error("[wm-tippspiel-card] clear_tip failed:", err);
