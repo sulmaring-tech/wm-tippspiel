@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.9.1";
+const WM_TIPPSPIEL_CARD_VERSION = "1.9.2";
 const AUTO_SAVE_DELAY_MS = 400;
 const MATCH_TIP_STATUS_CLASSES = [
   "tip-status-saved",
@@ -2358,18 +2358,21 @@ class WmTippspielCard extends HTMLElement {
       }
       .match-status-badge.status-saved { display: none; }
       .tips-view-filter {
-        display: flex;
-        justify-content: center;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 8px;
-        margin-bottom: 14px;
+        width: 100%;
+        margin-bottom: 16px;
       }
       .view-filter-btn {
+        width: 100%;
+        min-height: 44px;
         border: 1px solid var(--wm-border);
         background: var(--wm-bg-card);
         color: var(--wm-text-muted);
         border-radius: 8px;
-        padding: 8px 16px;
-        font-size: 0.82rem;
+        padding: 8px 12px;
+        font-size: 0.88rem;
         font-weight: 600;
         cursor: pointer;
         transition: background 0.15s, border-color 0.15s, color 0.15s;
@@ -2966,15 +2969,14 @@ class WmTippspielCard extends HTMLElement {
         }
       }
       .group-filter {
-        display: grid;
-        grid-template-columns: repeat(12, minmax(0, 1fr));
+        display: flex;
+        flex-wrap: wrap;
         gap: 8px;
-        width: 100%;
         margin-bottom: 20px;
       }
       .group-chip {
-        width: 100%;
-        min-height: 40px;
+        width: 40px;
+        height: 40px;
         border-radius: 8px;
         border: 1px solid var(--wm-border);
         background: var(--wm-bg-card);
@@ -3289,7 +3291,6 @@ class WmTippspielCard extends HTMLElement {
         .calendar-grid { grid-auto-rows: minmax(72px, auto); }
         .calendar-day { min-height: 72px; }
         .team-chip { font-size: 0.78rem; }
-        .group-filter { grid-template-columns: repeat(6, minmax(0, 1fr)); }
         .modal-overlay { padding: 12px; align-items: flex-end; }
         .modal-card { max-height: min(90dvh, 100%); border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
         .match-row-compact .teams-inline,
