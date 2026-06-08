@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.6.19";
+const WM_TIPPSPIEL_CARD_VERSION = "1.6.20";
 const AUTO_SAVE_DELAY_MS = 400;
 const MATCH_TIP_STATUS_CLASSES = [
   "tip-status-saved",
@@ -1634,6 +1634,38 @@ class WmTippspielCard extends HTMLElement {
     return String(err.message || err.body?.message || err.error?.message || err.code || err);
   }
 
+  _extractServiceResponseBody(response) {
+    if (!response || typeof response !== "object") return response;
+    if (response.response != null) return response.response;
+    if (response.result?.response != null) return response.result.response;
+    return response;
+  }
+
+  async _callClearTipService(payload) {
+    const data = { ...payload };
+    const entryId = this._entryId();
+    if (entryId && data.entry_id == null) data.entry_id = entryId;
+    try {
+      await this._hass.callService("wm_tippspiel", "clear_tip", data);
+      return;
+    } catch (err) {
+      const msg = this._serviceErrorMessage(err);
+      if (!msg.includes("return_response")) throw err;
+    }
+    const response = await this._hass.callService(
+      "wm_tippspiel",
+      "clear_tip",
+      data,
+      {},
+      true,
+      true
+    );
+    const body = this._extractServiceResponseBody(response);
+    if (body?.deleted === false) {
+      throw new Error("Kein gespeicherter Tipp auf dem Server.");
+    }
+  }
+
   _styles() {
     const accent = this._accent();
     return `
@@ -3173,7 +3205,7 @@ class WmTippspielCard extends HTMLElement {
       this._setTipSaveStatus(matchId, "saving");
     }
     try {
-      await this._callService("clear_tip", {
+      await this._callClearTipService({
         player_id: playerId,
         match_id: matchId,
       });
