@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.9.4";
+const WM_TIPPSPIEL_CARD_VERSION = "1.9.5";
 const AUTO_SAVE_DELAY_MS = 400;
 const MATCH_TIP_STATUS_CLASSES = [
   "tip-status-saved",
@@ -2400,9 +2400,15 @@ class WmTippspielCard extends HTMLElement {
       }
       .group-tables {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
-        gap: 8px;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 16px;
+        width: 100%;
         margin-bottom: 14px;
+      }
+      @media (max-width: 1200px) {
+        .group-tables {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
       }
       .group-table {
         border-radius: var(--wm-radius);
@@ -2422,9 +2428,9 @@ class WmTippspielCard extends HTMLElement {
       }
       .group-table-row {
         display: grid;
-        grid-template-columns: 14px 28px repeat(4, 18px);
-        gap: 4px;
-        padding: 4px 6px;
+        grid-template-columns: 18px minmax(28px, 1fr) repeat(4, minmax(22px, 1fr));
+        gap: 6px;
+        padding: 5px 8px;
         align-items: center;
       }
       .group-table-row.head {
@@ -2969,20 +2975,27 @@ class WmTippspielCard extends HTMLElement {
         }
       }
       .group-filter {
-        display: flex;
-        flex-wrap: wrap;
+        display: grid;
+        grid-template-columns: repeat(12, minmax(0, 1fr));
         gap: 8px;
+        width: 100%;
         margin-bottom: 20px;
       }
       .group-chip {
-        width: 40px;
-        height: 40px;
+        width: 100%;
+        min-height: 44px;
         border-radius: 8px;
         border: 1px solid var(--wm-border);
         background: var(--wm-bg-card);
         color: var(--wm-text-muted);
         cursor: pointer;
         font-weight: 600;
+        font-size: 0.88rem;
+        transition: background 0.15s, border-color 0.15s, color 0.15s;
+      }
+      .group-chip:hover {
+        background: var(--wm-bg-elevated);
+        color: var(--wm-text);
       }
       .group-matches-grid {
         display: grid;
@@ -3323,6 +3336,8 @@ class WmTippspielCard extends HTMLElement {
         .calendar-grid { grid-auto-rows: minmax(72px, auto); }
         .calendar-day { min-height: 72px; }
         .team-chip { font-size: 0.78rem; }
+        .group-filter { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+        .group-tables { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
         .modal-overlay { padding: 12px; align-items: flex-end; }
         .modal-card { max-height: min(90dvh, 100%); border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
         .match-row-compact .teams-inline,
