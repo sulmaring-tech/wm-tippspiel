@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.6.11";
+const WM_TIPPSPIEL_CARD_VERSION = "1.6.12";
 const AUTO_SAVE_DELAY_MS = 400;
 const MATCH_TIP_STATUS_CLASSES = [
   "tip-status-saved",
@@ -710,6 +710,7 @@ class WmTippspielCard extends HTMLElement {
     this._autoSaveTimers = this._autoSaveTimers || {};
     this._tipSaveStatus = this._tipSaveStatus || {};
     this._persistInFlight = this._persistInFlight || {};
+    this._displayedPlayerId = this._displayedPlayerId ?? null;
     if (!this.shadowRoot) {
       this.attachShadow({ mode: "open" });
       this._bindEvents();
@@ -1047,13 +1048,23 @@ class WmTippspielCard extends HTMLElement {
     }
   }
 
+  async _persistDraftTipsForPlayer(playerId) {
+    if (!playerId || !this._autoSaveEnabled()) return;
+    const drafts = this._draftTipsForPlayer(playerId);
+    for (const matchId of Object.keys(drafts)) {
+      await this._persistTip(matchId, { silent: true, playerId });
+    }
+  }
+
   async _switchPlayer(nextId) {
-    if (!nextId) return;
-    const prevId = this._selectedPlayer;
-    if (prevId && prevId !== nextId) {
+    if (!nextId || nextId === this._selectedPlayer) return;
+    const prevId = this._displayedPlayerId ?? this._selectedPlayer;
+    if (prevId) {
       this._captureDraftInputsFromDom(prevId);
       await this._flushScheduledTipPersists();
+      await this._persistDraftTipsForPlayer(prevId);
     }
+    delete this._draftTips[nextId];
     this._selectedPlayer = nextId;
     this._renderShell();
   }
@@ -1251,8 +1262,9 @@ class WmTippspielCard extends HTMLElement {
   }
 
   async _flushAndRender(firstRender) {
-    if ((this._tab === "tips" || this._tab === "bracket") && this._selectedPlayer) {
-      this._captureDraftInputsFromDom(this._selectedPlayer);
+    const captureId = this._displayedPlayerId ?? this._selectedPlayer;
+    if ((this._tab === "tips" || this._tab === "bracket") && captureId) {
+      this._captureDraftInputsFromDom(captureId);
     }
     await this._flushScheduledTipPersists();
     this._renderShell();
@@ -2302,8 +2314,9 @@ class WmTippspielCard extends HTMLElement {
     if (!this.shadowRoot) return;
     if (this._tab === "matches") this._tab = "bracket";
     if (this._tab === "players") this._tab = "tips";
-    if ((this._tab === "tips" || this._tab === "bracket") && this._selectedPlayer) {
-      this._captureDraftInputsFromDom(this._selectedPlayer);
+    const captureId = this._displayedPlayerId ?? this._selectedPlayer;
+    if ((this._tab === "tips" || this._tab === "bracket") && captureId) {
+      this._captureDraftInputsFromDom(captureId);
     }
     const cfg = this._config;
     const missing = !this._hass?.states?.[cfg.entity];
@@ -2377,6 +2390,9 @@ class WmTippspielCard extends HTMLElement {
       this.shadowRoot.querySelectorAll("[data-action=save-tip]").forEach((btn) => {
         this._syncTipSaveButton(btn.getAttribute("data-match"));
       });
+    }
+    if (this._selectedPlayer) {
+      this._displayedPlayerId = this._selectedPlayer;
     }
   }
 
