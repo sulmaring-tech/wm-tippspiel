@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.6.13";
+const WM_TIPPSPIEL_CARD_VERSION = "1.6.14";
 const AUTO_SAVE_DELAY_MS = 400;
 const MATCH_TIP_STATUS_CLASSES = [
   "tip-status-saved",
@@ -736,7 +736,8 @@ class WmTippspielCard extends HTMLElement {
     this._openAccordions = this._openAccordions || new Set();
     this._autoSaveTimers = this._autoSaveTimers || {};
     this._tipSaveStatus = this._tipSaveStatus || {};
-    this._persistInFlight = this._persistInFlight || {};
+    this._persistChains = this._persistChains || {};
+    this._dirtyTips = this._dirtyTips || new Set();
     this._displayedPlayerId = this._displayedPlayerId ?? null;
     this._tipsViewMode = this._tipsViewMode || "group";
     if (!this.shadowRoot) {
@@ -753,8 +754,11 @@ class WmTippspielCard extends HTMLElement {
     this.shadowRoot.addEventListener("click", (ev) => {
       const tabBtn = ev.target.closest("[data-tab]");
       if (tabBtn) {
-        this._tab = tabBtn.getAttribute("data-tab");
-        this._renderShell();
+        const nextTab = tabBtn.getAttribute("data-tab");
+        void this._flushPendingTipsBeforeUiChange().then(() => {
+          this._tab = nextTab;
+          this._renderShell();
+        });
         return;
       }
       const playerBtn = ev.target.closest(".player-chip[data-player-id]");
@@ -766,9 +770,11 @@ class WmTippspielCard extends HTMLElement {
       if (tipsViewBtn) {
         const mode = tipsViewBtn.getAttribute("data-tips-view");
         if (mode === "group" || mode === "date") {
-          this._tipsViewMode = mode;
-          this._openAccordions.clear();
-          this._renderShell();
+          void this._flushPendingTipsBeforeUiChange().then(() => {
+            this._tipsViewMode = mode;
+            this._openAccordions.clear();
+            this._renderShell();
+          });
         }
         return;
       }
@@ -814,6 +820,7 @@ class WmTippspielCard extends HTMLElement {
       const bucket = this._draftTipsForPlayer(playerId);
       bucket[matchId] = bucket[matchId] || {};
       bucket[matchId][side] = input.value;
+      this._markTipDirty(playerId, matchId);
       this._syncMatchTipVisuals(matchId);
       if (this._config.auto_save_tips !== false) {
         if (this._tipInputsEmpty(matchId, playerId) && this._getSavedTip(matchId, playerId)) {
@@ -859,8 +866,14 @@ class WmTippspielCard extends HTMLElement {
         if (!det) return;
         const id = det.getAttribute("data-acc-id");
         if (!id) return;
-        if (det.open) this._openAccordions.add(id);
-        else this._openAccordions.delete(id);
+        if (det.open) {
+          this._openAccordions.add(id);
+        } else {
+          this._openAccordions.delete(id);
+          if (this._tab === "tips" || this._tab === "bracket") {
+            void this._flushPendingTipsBeforeUiChange();
+          }
+        }
       },
       true
     );
@@ -1042,27 +1055,37 @@ class WmTippspielCard extends HTMLElement {
     delete this._autoSaveTimers[matchId];
   }
 
+  _markTipDirty(playerId, matchId) {
+    if (!playerId || !matchId) return;
+    this._dirtyTips.add(this._persistKey(playerId, matchId));
+  }
+
+  _clearTipDirty(playerId, matchId) {
+    if (!playerId || !matchId) return;
+    this._dirtyTips.delete(this._persistKey(playerId, matchId));
+  }
+
   _readTipFieldValues(matchId, playerId = this._selectedPlayer) {
     const draft = this._getDraftTip(playerId, matchId);
     const hasDraft = draft && Object.keys(draft).length > 0;
-    let home = "";
-    let away = "";
+    const saved = this._playerTipsFor(playerId)[matchId] || {};
+    if (hasDraft) {
+      return {
+        home: draft.home !== undefined ? draft.home : saved.home ?? "",
+        away: draft.away !== undefined ? draft.away : saved.away ?? "",
+      };
+    }
     if (playerId === this._selectedPlayer) {
       const { homeIn, awayIn } = this._tipInputElements(matchId);
-      home = homeIn?.value ?? "";
-      away = awayIn?.value ?? "";
+      return {
+        home: homeIn?.value ?? "",
+        away: awayIn?.value ?? "",
+      };
     }
-    if (hasDraft) {
-      if (draft.home !== undefined) home = draft.home;
-      if (draft.away !== undefined) away = draft.away;
-    } else if (playerId !== this._selectedPlayer) {
-      const saved = this._playerTipsFor(playerId)[matchId];
-      if (saved) {
-        home = saved.home ?? "";
-        away = saved.away ?? "";
-      }
-    }
-    return { home, away };
+    return {
+      home: saved.home ?? "",
+      away: saved.away ?? "",
+    };
   }
 
   _tipInputsValid(matchId, playerId = this._selectedPlayer) {
@@ -1086,12 +1109,24 @@ class WmTippspielCard extends HTMLElement {
     }
   }
 
-  async _persistDraftTipsForPlayer(playerId) {
-    if (!playerId || !this._autoSaveEnabled()) return;
-    const drafts = this._draftTipsForPlayer(playerId);
-    for (const matchId of Object.keys(drafts)) {
+  async _flushDirtyTipsForPlayer(playerId) {
+    if (!playerId || !this._autoSaveEnabled() || !this._dirtyTips?.size) return;
+    const prefix = `${playerId}::`;
+    const keys = [...this._dirtyTips].filter((key) => key.startsWith(prefix));
+    for (const key of keys) {
+      const matchId = key.slice(prefix.length);
       await this._persistTip(matchId, { silent: true, playerId });
     }
+  }
+
+  async _flushPendingTipsBeforeUiChange() {
+    const playerId = this._displayedPlayerId ?? this._selectedPlayer;
+    if (!playerId) return;
+    if (this._tab === "tips" || this._tab === "bracket") {
+      this._captureDraftInputsFromDom(playerId);
+    }
+    await this._flushScheduledTipPersists();
+    await this._flushDirtyTipsForPlayer(playerId);
   }
 
   async _switchPlayer(nextId) {
@@ -1100,7 +1135,7 @@ class WmTippspielCard extends HTMLElement {
     if (prevId) {
       this._captureDraftInputsFromDom(prevId);
       await this._flushScheduledTipPersists();
-      await this._persistDraftTipsForPlayer(prevId);
+      await this._flushDirtyTipsForPlayer(prevId);
     }
     delete this._draftTips[nextId];
     this._selectedPlayer = nextId;
@@ -1216,24 +1251,40 @@ class WmTippspielCard extends HTMLElement {
 
   async _persistTip(matchId, options = {}) {
     const playerId = options.playerId ?? this._selectedPlayer;
-    if (!playerId) return;
-    const inflightKey = this._persistKey(playerId, matchId);
-    if (this._persistInFlight[inflightKey]) return;
-    this._clearAutoSaveTimer(matchId);
-    this._persistInFlight[inflightKey] = true;
+    if (!playerId || !matchId) return;
+    const chainKey = this._persistKey(playerId, matchId);
+    const prior = this._persistChains[chainKey] || Promise.resolve();
+    let release;
+    const gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    this._persistChains[chainKey] = gate;
+    await prior;
     try {
-      if (this._tipInputsValid(matchId, playerId)) {
-        return await this._saveTip(matchId, { ...options, playerId });
-      }
-      if (this._tipInputsEmpty(matchId, playerId) && this._getSavedTip(matchId, playerId)) {
-        return await this._clearTip(matchId, { ...options, playerId });
-      }
-      if (playerId === this._selectedPlayer) {
-        this._syncMatchTipVisuals(matchId);
-        this._resetTipSaveBadge(matchId);
-      }
+      this._clearAutoSaveTimer(matchId);
+      await this._persistTipNow(matchId, { ...options, playerId });
     } finally {
-      delete this._persistInFlight[inflightKey];
+      release();
+      if (this._persistChains[chainKey] === gate) {
+        delete this._persistChains[chainKey];
+      }
+    }
+  }
+
+  async _persistTipNow(matchId, options = {}) {
+    const playerId = options.playerId ?? this._selectedPlayer;
+    if (!playerId) return;
+    if (this._tipInputsValid(matchId, playerId)) {
+      await this._saveTip(matchId, { ...options, playerId });
+      return;
+    }
+    if (this._tipInputsEmpty(matchId, playerId) && this._getSavedTip(matchId, playerId)) {
+      await this._clearTip(matchId, { ...options, playerId });
+      return;
+    }
+    if (playerId === this._selectedPlayer) {
+      this._syncMatchTipVisuals(matchId);
+      this._resetTipSaveBadge(matchId);
     }
   }
 
@@ -1299,12 +1350,20 @@ class WmTippspielCard extends HTMLElement {
     }
   }
 
-  async _flushAndRender(firstRender) {
+  _flushAndRender(firstRender) {
+    this._flushRenderChain = (this._flushRenderChain || Promise.resolve()).then(() =>
+      this._flushAndRenderNow(firstRender)
+    );
+    return this._flushRenderChain;
+  }
+
+  async _flushAndRenderNow(firstRender) {
     const captureId = this._displayedPlayerId ?? this._selectedPlayer;
     if ((this._tab === "tips" || this._tab === "bracket") && captureId) {
       this._captureDraftInputsFromDom(captureId);
     }
     await this._flushScheduledTipPersists();
+    if (captureId) await this._flushDirtyTipsForPlayer(captureId);
     this._renderShell();
     if (firstRender) this._shellReady = true;
   }
@@ -2945,6 +3004,8 @@ class WmTippspielCard extends HTMLElement {
     const awayNum = Number(away);
     const saved = this._getSavedTip(matchId, playerId);
     if (saved && saved.home === homeNum && saved.away === awayNum) {
+      delete this._draftTipsForPlayer(playerId)[matchId];
+      this._clearTipDirty(playerId, matchId);
       if (playerId === this._selectedPlayer) {
         this._setTipSaveStatus(matchId, "saved");
         this._syncMatchTipVisuals(matchId);
@@ -2971,6 +3032,7 @@ class WmTippspielCard extends HTMLElement {
       this._applySavedTip(matchId, homeNum, awayNum, playerId);
       const playerDrafts = this._draftTipsForPlayer(playerId);
       delete playerDrafts[matchId];
+      this._clearTipDirty(playerId, matchId);
       if (playerId === this._selectedPlayer) {
         this._setTipSaveStatus(matchId, "saved");
         this._syncMatchTipVisuals(matchId);
@@ -3027,6 +3089,7 @@ class WmTippspielCard extends HTMLElement {
       this._applyClearedTip(matchId, playerId);
       const playerDrafts = this._draftTipsForPlayer(playerId);
       delete playerDrafts[matchId];
+      this._clearTipDirty(playerId, matchId);
       if (playerId === this._selectedPlayer) {
         this._resetTipSaveBadge(matchId);
         this._syncMatchTipVisuals(matchId);
