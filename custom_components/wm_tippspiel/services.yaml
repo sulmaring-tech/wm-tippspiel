@@ -16,6 +16,17 @@ set_tip:
     away:
       name: Tore Auswärts
 
+clear_tip:
+  name: Tipp löschen
+  description: Entfernt einen gespeicherten Tipp für ein Spiel.
+  fields:
+    entry_id:
+      name: Konfigurations-ID
+    player_id:
+      name: Spieler-ID
+    match_id:
+      name: Spiel-ID
+
 set_result:
   name: Ergebnis eintragen
   description: Trägt das offizielle Spielergebnis ein und berechnet Punkte neu.

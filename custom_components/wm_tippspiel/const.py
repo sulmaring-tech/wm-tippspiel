@@ -42,6 +42,7 @@ ATTR_AWAY = "away"
 ATTR_NAME = "name"
 
 SERVICE_SET_TIP = "set_tip"
+SERVICE_CLEAR_TIP = "clear_tip"
 SERVICE_SET_RESULT = "set_result"
 SERVICE_CLEAR_RESULT = "clear_result"
 SERVICE_CLEAR_ALL_RESULTS = "clear_all_results"

@@ -25,6 +25,7 @@ from .const import (
     DOMAIN,
     SERVICE_ADD_PLAYER,
     SERVICE_CLEAR_RESULT,
+    SERVICE_CLEAR_TIP,
     SERVICE_CLEAR_ALL_RESULTS,
     SERVICE_REMOVE_PLAYER,
     SERVICE_SET_RESULT,
@@ -121,6 +122,16 @@ def _register_services(hass: HomeAssistant) -> None:
         await store.async_save()
         _async_notify(hass)
 
+    async def _clear_tip(call: ServiceCall) -> None:
+        store = get_store(hass, call.data.get("entry_id"))
+        try:
+            if not store.clear_tip(call.data[ATTR_PLAYER_ID], call.data[ATTR_MATCH_ID]):
+                return
+        except ValueError as err:
+            raise HomeAssistantError(str(err)) from err
+        await store.async_save()
+        _async_notify(hass)
+
     async def _set_result(call: ServiceCall) -> None:
         store = get_store(hass, call.data.get("entry_id"))
         store.set_result(
@@ -205,6 +216,18 @@ def _register_services(hass: HomeAssistant) -> None:
                 vol.Required(ATTR_MATCH_ID): cv.string,
                 vol.Required(ATTR_HOME): vol.All(vol.Coerce(int), vol.Range(min=0, max=20)),
                 vol.Required(ATTR_AWAY): vol.All(vol.Coerce(int), vol.Range(min=0, max=20)),
+            }
+        ),
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_CLEAR_TIP,
+        _clear_tip,
+        schema=vol.Schema(
+            {
+                vol.Optional("entry_id"): cv.string,
+                vol.Required(ATTR_PLAYER_ID): cv.string,
+                vol.Required(ATTR_MATCH_ID): cv.string,
             }
         ),
     )

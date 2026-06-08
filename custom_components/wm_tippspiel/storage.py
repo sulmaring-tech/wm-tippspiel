@@ -222,6 +222,22 @@ class WmTippspielStore:
         player_tips = self._data.setdefault("tips", {}).setdefault(player_id, {})
         player_tips[match_id] = {"home": int(home), "away": int(away)}
 
+    def clear_tip(self, player_id: str, match_id: str) -> bool:
+        if not any(p.get("id") == player_id for p in self.get_players()):
+            raise ValueError(f"Unbekannter Spieler: {player_id}")
+        match = self.get_match(match_id)
+        if not match:
+            raise ValueError(f"Unbekanntes Spiel: {match_id}")
+        if is_past_kickoff(match.get("kickoff")):
+            raise ValueError("Tippabgabe geschlossen – Anpfiff bereits erfolgt.")
+        player_tips = self._data.get("tips", {}).get(player_id, {})
+        if match_id not in player_tips:
+            return False
+        del player_tips[match_id]
+        if not player_tips:
+            self._data.get("tips", {}).pop(player_id, None)
+        return True
+
     def set_result(self, match_id: str, home: int, away: int) -> None:
         if not self.get_match(match_id):
             raise ValueError(f"Unbekanntes Spiel: {match_id}")
