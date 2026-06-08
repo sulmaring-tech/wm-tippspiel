@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.6.6";
+const WM_TIPPSPIEL_CARD_VERSION = "1.6.7";
 
 const ALL_GROUPS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 const KNOCKOUT_ROUNDS = [
@@ -200,8 +200,19 @@ class WmTippspielCardEditor extends HTMLElement {
   }
 
   set hass(hass) {
+    const prev = this._hass;
     this._hass = hass;
-    if (this._config) this._render();
+    if (!this._config) return;
+    const entity = this._config.entity;
+    const prevPlayers = entity ? prev?.states?.[entity]?.attributes?.players : null;
+    const nextPlayers = entity ? hass?.states?.[entity]?.attributes?.players : null;
+    const playersChanged = JSON.stringify(prevPlayers) !== JSON.stringify(nextPlayers);
+    if (!prev || playersChanged || !this.querySelector(".ed")) {
+      this._render();
+      return;
+    }
+    const picker = this.querySelector('ha-entity-picker[data-key="entity"]');
+    if (picker) picker.hass = hass;
   }
 
   _players() {
@@ -301,26 +312,25 @@ class WmTippspielCardEditor extends HTMLElement {
 
     this.querySelectorAll("ha-textfield[data-key]").forEach((el) => {
       const key = el.getAttribute("data-key");
-      if (key === "new_player") {
-        el.value = this._newPlayerName || "";
-        const onNameInput = (ev) => {
-          this._newPlayerName = ev.detail?.value ?? ev.target?.value ?? "";
-        };
-        el.addEventListener("input", onNameInput);
-        el.addEventListener("value-changed", onNameInput);
-        el.addEventListener("keydown", (ev) => {
-          if (ev.key === "Enter") {
-            ev.preventDefault();
-            void this._addPlayer();
-          }
-        });
-        return;
-      }
       el.value = cfg[key] ?? (key === "accent_color" ? DEFAULT_ACCENT : "");
       el.addEventListener("change", (ev) => {
         this._set(key, ev.target.value);
       });
     });
+
+    const playerInput = this.querySelector(".ed-player-input");
+    if (playerInput) {
+      playerInput.value = this._newPlayerName || "";
+      playerInput.addEventListener("input", (ev) => {
+        this._newPlayerName = ev.target.value;
+      });
+      playerInput.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          void this._addPlayer();
+        }
+      });
+    }
 
     this.querySelectorAll(".ed-chip[data-player]").forEach((chip) => {
       chip.addEventListener("click", () => {
@@ -373,6 +383,11 @@ class WmTippspielCardEditor extends HTMLElement {
   }
 
   _render() {
+    const active = document.activeElement;
+    if (active?.classList?.contains("ed-player-input")) {
+      this._newPlayerName = active.value;
+    }
+
     const cfg = this._config;
     const players = this._players();
     const pendingId = this._pendingRemovePlayerId;
@@ -428,10 +443,16 @@ class WmTippspielCardEditor extends HTMLElement {
           <div class="ed-title">Spielerverwaltung</div>
           <p class="ed-hint">Mitspieler werden in der Integration gespeichert und stehen auf allen Geräten zur Verfügung. Standard-Tipper per Klick auf den Namen wählen.</p>
           <div class="ed-add-box">
-            <ha-textfield
-              label="Neuer Spieler"
-              data-key="new_player"
-            ></ha-textfield>
+            <label class="ed-player-field">
+              <span class="ed-player-label">Neuer Spieler</span>
+              <input
+                type="text"
+                class="ed-player-input"
+                placeholder="Name eingeben…"
+                value="${escapeHtml(this._newPlayerName || "")}"
+                autocomplete="off"
+              />
+            </label>
             <button type="button" class="ed-btn ed-btn-primary" data-action="add-player">+ Hinzufügen</button>
           </div>
           <div class="ed-player-list">${playerList}</div>
@@ -577,6 +598,30 @@ class WmTippspielCardEditor extends HTMLElement {
         }
         .ed-add-box ha-textfield {
           margin-bottom: 0;
+        }
+        .ed-player-field {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          min-width: 0;
+        }
+        .ed-player-label {
+          font-size: 12px;
+          color: var(--secondary-text-color);
+        }
+        .ed-player-input {
+          width: 100%;
+          border-radius: 8px;
+          border: 1px solid var(--divider-color);
+          background: var(--card-background-color);
+          color: var(--primary-text-color);
+          padding: 10px 12px;
+          font-size: 14px;
+          font-family: inherit;
+        }
+        .ed-player-input:focus {
+          outline: 2px solid var(--primary-color);
+          border-color: var(--primary-color);
         }
         .ed-btn {
           border: 1px solid var(--divider-color);
@@ -1339,11 +1384,16 @@ class WmTippspielCard extends HTMLElement {
         overflow: hidden;
       }
       .match-row-compact .team-side.home {
-        justify-content: flex-start;
+        justify-content: flex-end;
       }
       .match-row-compact .team-side.away {
-        justify-content: flex-end;
-        flex-direction: row-reverse;
+        justify-content: flex-start;
+      }
+      .match-row-compact .team-side.home .team-name-cell {
+        text-align: right;
+      }
+      .match-row-compact .team-side.away .team-name-cell {
+        text-align: left;
       }
       .match-row-compact .team-name-cell {
         min-width: 0;
@@ -2232,8 +2282,8 @@ class WmTippspielCard extends HTMLElement {
         <div class="match-row-compact">
           <div class="teams-inline">
             <div class="team-side home">
-              <span class="team-flag">${teamFlag(m.home)}</span>
               <span class="team-name-cell">${teamDisplayName(m.home)}</span>
+              <span class="team-flag">${teamFlag(m.home)}</span>
             </div>
             <div class="score-box">${scoreHtml}</div>
             <div class="team-side away">
