@@ -22,6 +22,10 @@ MAX_UPDATE_CHECK_INTERVAL = 86400
 API_FOOTBALL_BASE_URL = "https://v3.football.api-sports.io"
 API_FOOTBALL_LEAGUE = 1
 API_FOOTBALL_SEASON = 2026
+OPENFOOTBALL_JSON_URL = (
+    "https://raw.githubusercontent.com/openfootball/worldcup.json/"
+    "master/2026/worldcup.json"
+)
 
 STORAGE_VERSION = 1
 STORAGE_KEY = "wm_tippspiel"

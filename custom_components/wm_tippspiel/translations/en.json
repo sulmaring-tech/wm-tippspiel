@@ -18,10 +18,10 @@
     "step": {
       "init": {
         "title": "WM Tippspiel options",
-        "description": "Automatic results (API-Football) and update checks (GitHub releases).",
+        "description": "Results from openfootball (no key required). Optional API-Football for kickoff times. Update checks via GitHub releases.",
         "data": {
-          "api_key": "API-Football key",
-          "auto_results": "Fetch results automatically",
+          "api_key": "API-Football key (optional)",
+          "auto_results": "Fetch results automatically (openfootball)",
           "scan_interval": "Results poll interval (seconds, min. 300)",
           "update_check_interval": "Update check interval (seconds, min. 60, default 60 = 1 min)"
         }

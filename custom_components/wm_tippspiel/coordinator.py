@@ -1,4 +1,4 @@
-"""Coordinator: synchronisiert WM-Ergebnisse von API-Football."""
+"""Coordinator: synchronisiert WM-Ergebnisse (openfootball + optional API-Football)."""
 
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
 )
+from .openfootball_sync import OpenFootballError, async_fetch_openfootball_matches, sync_from_openfootball
 from .storage import WmTippspielStore
 
 _LOGGER = logging.getLogger(__name__)
@@ -35,7 +36,7 @@ def _load_team_map() -> dict[str, int]:
 
 
 class WmTippspielCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Pollt API-Football und trägt Ergebnisse ein."""
+    """Pollt openfootball (Ergebnisse) und optional API-Football (Anstoßzeiten)."""
 
     def __init__(
         self,
@@ -61,38 +62,70 @@ class WmTippspielCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return str(self.entry.options.get(CONF_API_KEY, "")).strip()
 
     def _auto_enabled(self) -> bool:
-        return bool(self.entry.options.get(CONF_AUTO_RESULTS, True)) and bool(
-            self._api_key()
-        )
+        return bool(self.entry.options.get(CONF_AUTO_RESULTS, True))
+
+    def _api_football_enabled(self) -> bool:
+        return self._auto_enabled() and bool(self._api_key())
 
     async def _async_update_data(self) -> dict[str, Any]:
         result: dict[str, Any] = {
             "last_sync": datetime.now().isoformat(),
+            "sync_enabled": self._auto_enabled(),
+            "api_enabled": self._api_football_enabled(),
             "updated_matches": 0,
+            "openfootball_updates": 0,
+            "api_football_updates": 0,
             "schedule_updates": 0,
-            "api_enabled": self._auto_enabled(),
+            "finished_count": 0,
             "error": None,
         }
         if not self._auto_enabled():
             return result
 
-        client = ApiFootballClient(self.hass, self._api_key())
+        changed = False
+        errors: list[str] = []
+
         try:
-            fixtures = await client.async_get_fixtures()
-            schedule = ApiFootballClient.parse_schedule_updates(fixtures)
-            schedule_updated = self._apply_schedule(schedule)
-            result["schedule_updates"] = schedule_updated
-            finished = ApiFootballClient.parse_finished_results(fixtures)
-            updated = self._apply_results(finished)
-            result["updated_matches"] = updated
-            result["finished_count"] = len(finished)
-            if updated or schedule_updated:
-                await self.store.async_save()
-                self.hass.bus.async_fire(f"{DOMAIN}_updated")
-        except ApiFootballError as err:
-            result["error"] = str(err)
-            _LOGGER.warning("API-Football: %s", err)
-            return result
+            remote_matches = await async_fetch_openfootball_matches(self.hass)
+            of_result = await self.hass.async_add_executor_job(
+                sync_from_openfootball, self.store, remote_matches
+            )
+            result["openfootball_updates"] = of_result.get("updated_matches", 0)
+            result["finished_count"] = of_result.get("finished_count", 0)
+            if of_result.get("updated_matches"):
+                changed = True
+        except OpenFootballError as err:
+            errors.append(str(err))
+            _LOGGER.warning("openfootball: %s", err)
+
+        if self._api_football_enabled():
+            client = ApiFootballClient(self.hass, self._api_key())
+            try:
+                fixtures = await client.async_get_fixtures()
+                schedule = ApiFootballClient.parse_schedule_updates(fixtures)
+                schedule_updated = self._apply_schedule(schedule)
+                result["schedule_updates"] = schedule_updated
+                finished = ApiFootballClient.parse_finished_results(fixtures)
+                api_updated = self._apply_results(finished)
+                result["api_football_updates"] = api_updated
+                result["finished_count"] = max(
+                    int(result.get("finished_count") or 0), len(finished)
+                )
+                if schedule_updated or api_updated:
+                    changed = True
+            except ApiFootballError as err:
+                errors.append(str(err))
+                _LOGGER.warning("API-Football: %s", err)
+
+        result["updated_matches"] = int(result["openfootball_updates"]) + int(
+            result["api_football_updates"]
+        )
+        if errors:
+            result["error"] = "; ".join(errors)
+
+        if changed:
+            await self.store.async_save()
+            self.hass.bus.async_fire(f"{DOMAIN}_updated")
 
         return result
 
@@ -114,7 +147,7 @@ class WmTippspielCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.store.set_result(match_id, home, away)
             updated += 1
             _LOGGER.info(
-                "Ergebnis automatisch eingetragen: %s = %s:%s",
+                "API-Football: Ergebnis eingetragen %s = %s:%s",
                 match_id,
                 home,
                 away,

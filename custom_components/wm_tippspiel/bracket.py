@@ -5,19 +5,20 @@ from __future__ import annotations
 import re
 from typing import Any
 
-_GROUP_RANK_RE = re.compile(r"^(\d+)\. Gruppe ([A-H])$")
+_GROUP_RANK_RE = re.compile(r"^(\d+)\. Gruppe ([A-L])$")
 _WINNER_RE = re.compile(r"^Sieger (.+)$")
 _LOSER_RE = re.compile(r"^Verlierer (.+)$")
-_THIRD_MULTI_RE = re.compile(r"^3\. Gruppe ([A-H](?:/[A-H])*)$")
+_THIRD_MULTI_RE = re.compile(r"^3\. Gruppe ([A-L](?:/[A-L])*)$")
 
-# Reihenfolge für Drittplatz-Zuweisungen bei überlappenden Gruppen-Pools
 _THIRD_PLACE_SLOTS: list[tuple[str, str, list[str]]] = [
-    ("R32-9", "home", ["A", "B", "C"]),
-    ("R32-9", "away", ["D", "E", "F"]),
-    ("R32-10", "home", ["G", "H"]),
-    ("R32-10", "away", ["A", "B", "C"]),
-    ("R32-11", "home", ["D", "E", "F"]),
-    ("R32-11", "away", ["G", "H"]),
+    ("R32-2", "away", ["A", "B", "C", "D", "F"]),
+    ("R32-5", "away", ["C", "D", "F", "G", "H"]),
+    ("R32-7", "away", ["C", "E", "F", "H", "I"]),
+    ("R32-8", "away", ["E", "H", "I", "J", "K"]),
+    ("R32-9", "away", ["B", "E", "F", "I", "J"]),
+    ("R32-10", "away", ["A", "E", "H", "I", "J"]),
+    ("R32-13", "away", ["E", "F", "G", "I", "J"]),
+    ("R32-15", "away", ["D", "E", "I", "J", "L"]),
 ]
 
 _SCHEDULE_FIELDS = frozenset({"id", "stage", "group", "kickoff", "venue"})
@@ -199,7 +200,6 @@ def refresh_knockout_teams(
     results: dict[str, dict[str, int]],
     templates_by_id: dict[str, dict[str, str]],
 ) -> bool:
-    """Setzt home/away in K.o.-Spielen anhand von Ergebnissen. Gibt True bei Änderungen zurück."""
     if not matches:
         return False
 

@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.7.0";
+const WM_TIPPSPIEL_CARD_VERSION = "1.8.1";
 const AUTO_SAVE_DELAY_MS = 400;
 const MATCH_TIP_STATUS_CLASSES = [
   "tip-status-saved",
@@ -7,7 +7,7 @@ const MATCH_TIP_STATUS_CLASSES = [
   "tip-status-exact",
 ];
 
-const ALL_GROUPS = ["A", "B", "C", "D", "E", "F", "G", "H"];
+const ALL_GROUPS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"];
 const KNOCKOUT_ROUNDS = [
   "Sechzehntelfinale",
   "Achtelfinale",
@@ -19,7 +19,6 @@ const KNOCKOUT_ROUNDS = [
 const DEFAULT_ACCENT = "#87B8E0";
 const DEFAULT_ACCENT_DARK = "#6BA3D0";
 const DEFAULT_ACCENT_2 = "#22c55e";
-const CARD_LOGO_URL = "/wm_tippspiel/wwvt-logo.png";
 const KICKOFF_SOON_MINUTES = 120;
 const FLAG_CDN = "https://flagcdn.com/w40";
 
@@ -63,6 +62,22 @@ const TEAM_ISO = {
   Schweden: "se",
   Türkei: "tr",
   Tschechien: "cz",
+  Frankreich: "fr",
+  Senegal: "sn",
+  Irak: "iq",
+  Norwegen: "no",
+  Argentinien: "ar",
+  Algerien: "dz",
+  Österreich: "at",
+  Jordanien: "jo",
+  Portugal: "pt",
+  "DR Kongo": "cd",
+  Usbekistan: "uz",
+  Kolumbien: "co",
+  England: "gb-eng",
+  Kroatien: "hr",
+  Ghana: "gh",
+  Panama: "pa",
 };
 
 function escapeHtml(s) {
@@ -219,7 +234,6 @@ function defaultConfig(overrides = {}) {
     entity: "",
     title: "WM Tippspiel 2026",
     subtitle: "Fußball-WM 2026 · Tipprunde",
-    show_logo: true,
     player_id: "",
     admin: false,
     show_groups: [...ALL_GROUPS],
@@ -337,8 +351,6 @@ class WmTippspielCardEditor extends HTMLElement {
         return cfg.show_knockout !== false;
       case "show_rules":
         return cfg.show_rules !== false;
-      case "show_logo":
-        return cfg.show_logo !== false;
       case "auto_save_tips":
         return cfg.auto_save_tips !== false;
       default:
@@ -550,9 +562,6 @@ class WmTippspielCardEditor extends HTMLElement {
 
         <div class="ed-section">
           <div class="ed-title">Design</div>
-          <ha-formfield label="WWVT-Logo im Header anzeigen">
-            <ha-switch data-key="show_logo"></ha-switch>
-          </ha-formfield>
           <ha-textfield
             label="Akzentfarbe (Hex)"
             data-key="accent_color"
@@ -704,7 +713,7 @@ class WmTippspielCardEditor extends HTMLElement {
         }
         .ed-groups {
           display: grid;
-          grid-template-columns: repeat(4, 1fr);
+          grid-template-columns: repeat(6, 1fr);
           gap: 6px;
           margin-bottom: 12px;
         }
@@ -1618,10 +1627,6 @@ class WmTippspielCard extends HTMLElement {
     return this._config.accent_color || DEFAULT_ACCENT;
   }
 
-  _logoUrl() {
-    return CARD_LOGO_URL;
-  }
-
   _entryId() {
     const entryId = this._state?.attributes?.entry_id;
     if (entryId) return entryId;
@@ -1732,11 +1737,20 @@ class WmTippspielCard extends HTMLElement {
         gap: 14px;
         min-width: 0;
       }
-      .header-logo {
-        height: 48px;
-        width: auto;
-        object-fit: contain;
+      .header-trophy {
+        display: flex;
+        align-items: center;
+        justify-content: center;
         flex-shrink: 0;
+        width: 48px;
+        height: 48px;
+        border-radius: 10px;
+        background: rgba(135, 184, 224, 0.12);
+        border: 1px solid rgba(135, 184, 224, 0.25);
+        color: var(--wm-accent);
+      }
+      .header-trophy ha-icon {
+        --mdc-icon-size: 28px;
       }
       .header-brand h1 {
         margin: 0;
@@ -2628,7 +2642,8 @@ class WmTippspielCard extends HTMLElement {
       }
       @media (max-width: 768px) {
         .card-wrap.app-shell { padding: 12px 14px calc(28px + env(safe-area-inset-bottom, 0)); }
-        .header-logo { height: 40px; }
+        .header-trophy { width: 40px; height: 40px; }
+        .header-trophy ha-icon { --mdc-icon-size: 24px; }
         .standings-rankings-row { flex-direction: column; align-items: stretch; }
         .standings-podium { width: 100%; max-width: 360px; margin: 0 auto; }
         .standings-table { min-width: 0; font-size: 0.82rem; }
@@ -2739,7 +2754,6 @@ class WmTippspielCard extends HTMLElement {
       else body = this._renderTips(groupMatches, playerTips, results, playerId, players, groupTables);
     }
 
-    const showLogo = cfg.show_logo !== false;
     const subtitle = cfg.subtitle || "Fußball-WM 2026 · Tipprunde";
     this.shadowRoot.innerHTML = `
       <style>${this._styles()}</style>
@@ -2747,7 +2761,7 @@ class WmTippspielCard extends HTMLElement {
         <div class="card-wrap app-shell">
           <header class="app-header">
             <div class="header-brand">
-              ${showLogo ? `<img class="header-logo" src="${this._logoUrl()}" alt="" />` : ""}
+              <span class="header-trophy" aria-hidden="true"><ha-icon icon="mdi:trophy"></ha-icon></span>
               <div>
                 <h1>${escapeHtml(cfg.title || "WM Tippspiel")}</h1>
                 <p>${escapeHtml(subtitle)}</p>

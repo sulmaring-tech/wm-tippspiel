@@ -128,9 +128,12 @@ class WmTippspielLeaderboardSensor(WmTippspielBaseSensor):
         }
         if self._coordinator.data:
             attrs["api_sync"] = {
-                "enabled": self._coordinator.data.get("api_enabled"),
+                "enabled": self._coordinator.data.get("sync_enabled"),
                 "last_sync": self._coordinator.data.get("last_sync"),
                 "updated_matches": self._coordinator.data.get("updated_matches"),
+                "openfootball_updates": self._coordinator.data.get("openfootball_updates"),
+                "api_football_updates": self._coordinator.data.get("api_football_updates"),
+                "api_football_enabled": self._coordinator.data.get("api_enabled"),
                 "schedule_updates": self._coordinator.data.get("schedule_updates"),
                 "finished_count": self._coordinator.data.get("finished_count"),
                 "error": self._coordinator.data.get("error"),
