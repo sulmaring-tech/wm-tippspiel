@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.9.6";
+const WM_TIPPSPIEL_CARD_VERSION = "1.9.7";
 const AUTO_SAVE_DELAY_MS = 400;
 const MATCH_TIP_STATUS_CLASSES = [
   "tip-status-saved",
@@ -2207,28 +2207,28 @@ class WmTippspielCard extends HTMLElement {
         container-type: inline-size;
         container-name: wm-body;
       }
-      .body[data-match-cols="2"] .accordion-body,
-      .body[data-match-cols="3"] .accordion-body {
+      .body[data-match-cols="2"] .accordion-body:not(.group-matches-grid),
+      .body[data-match-cols="3"] .accordion-body:not(.group-matches-grid) {
         display: grid;
         gap: 12px;
       }
-      .body[data-match-cols="2"] .accordion-body {
+      .body[data-match-cols="2"] .accordion-body:not(.group-matches-grid) {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
-      .body[data-match-cols="3"] .accordion-body {
+      .body[data-match-cols="3"] .accordion-body:not(.group-matches-grid) {
         grid-template-columns: repeat(3, minmax(0, 1fr));
       }
-      .body[data-match-cols="2"] .accordion-body .match,
-      .body[data-match-cols="3"] .accordion-body .match {
+      .body[data-match-cols="2"] .accordion-body:not(.group-matches-grid) .match,
+      .body[data-match-cols="3"] .accordion-body:not(.group-matches-grid) .match {
         margin-bottom: 0;
       }
       @container wm-body (min-width: 720px) {
-        .body[data-match-cols="auto"] .accordion-body {
+        .body[data-match-cols="auto"] .accordion-body:not(.group-matches-grid) {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 12px;
         }
-        .body[data-match-cols="auto"] .accordion-body .match {
+        .body[data-match-cols="auto"] .accordion-body:not(.group-matches-grid) .match {
           margin-bottom: 0;
         }
       }
@@ -2997,7 +2997,7 @@ class WmTippspielCard extends HTMLElement {
         background: var(--wm-bg-elevated);
         color: var(--wm-text);
       }
-      .group-matches-grid {
+      .body .accordion-body.group-matches-grid {
         display: grid;
         grid-template-columns: repeat(5, minmax(0, 1fr));
         gap: 12px;
