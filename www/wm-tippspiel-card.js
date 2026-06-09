@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.9.9";
+const WM_TIPPSPIEL_CARD_VERSION = "1.9.10";
 const AUTO_SAVE_DELAY_MS = 400;
 const MATCH_TIP_STATUS_CLASSES = [
   "tip-status-saved",
@@ -3010,9 +3010,29 @@ class WmTippspielCard extends HTMLElement {
         grid-template-columns: 1fr;
         gap: 12px;
       }
-      @container wm-body (min-width: 769px) {
+      @container wm-body (min-width: 960px) {
+        .body .accordion-body.group-matches-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+      @container wm-body (min-width: 1200px) {
+        .body .accordion-body.group-matches-grid {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+      }
+      @container wm-body (min-width: 1400px) {
+        .body .accordion-body.group-matches-grid {
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+      }
+      @container wm-body (min-width: 1600px) {
         .body .accordion-body.group-matches-grid {
           grid-template-columns: repeat(5, minmax(0, 1fr));
+        }
+      }
+      @media (max-width: 959px) {
+        .body .accordion-body.group-matches-grid {
+          grid-template-columns: 1fr !important;
         }
       }
       .group-matches-grid .match,
@@ -3359,7 +3379,7 @@ class WmTippspielCard extends HTMLElement {
         .team-chip { font-size: 0.78rem; }
         .group-filter { grid-template-columns: repeat(6, minmax(0, 1fr)); }
         .group-tables { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-        .body .accordion-body.group-matches-grid { grid-template-columns: 1fr; }
+        .body .accordion-body.group-matches-grid { grid-template-columns: 1fr !important; }
         .modal-overlay { padding: 12px; align-items: flex-end; }
         .modal-card { max-height: min(90dvh, 100%); border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
         .match-row-compact .teams-inline,
