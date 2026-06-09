@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.9.11";
+const WM_TIPPSPIEL_CARD_VERSION = "1.9.12";
 const AUTO_SAVE_DELAY_MS = 400;
 const MATCH_TIP_STATUS_CLASSES = [
   "tip-status-saved",
@@ -2730,12 +2730,14 @@ class WmTippspielCard extends HTMLElement {
       .standings-rankings-row {
         display: flex;
         gap: 24px;
-        align-items: flex-end;
+        align-items: stretch;
         flex-wrap: wrap;
       }
       .standings-podium {
-        flex-shrink: 0;
-        width: min(280px, 100%);
+        flex: 1.5 1 320px;
+        max-width: 520px;
+        display: flex;
+        flex-direction: column;
         padding: 16px;
         background: var(--wm-bg-card);
         border: 1px solid var(--wm-border);
@@ -2749,9 +2751,10 @@ class WmTippspielCard extends HTMLElement {
       }
       .standings-podium-stage {
         display: flex;
+        flex: 1;
         align-items: flex-end;
         justify-content: center;
-        gap: 8px;
+        gap: 12px;
         min-height: 200px;
       }
       .podium-slot {
@@ -2759,7 +2762,7 @@ class WmTippspielCard extends HTMLElement {
         flex-direction: column;
         align-items: center;
         flex: 1;
-        max-width: 88px;
+        max-width: 140px;
       }
       .podium-slot.flash .podium-block {
         animation: podiumPulse 300ms ease;
@@ -2814,13 +2817,17 @@ class WmTippspielCard extends HTMLElement {
       .podium-slot-empty .podium-block { margin-top: 72px; }
       .podium-rank { font-size: 1.25rem; font-weight: 800; color: #000; }
       .standings-table-wrap {
-        flex: 1;
+        flex: 1 1 260px;
+        max-width: 420px;
         min-width: 0;
+        display: flex;
+        flex-direction: column;
         overflow-x: auto;
       }
       .standings-table {
         width: 100%;
-        min-width: 420px;
+        min-width: 0;
+        height: 100%;
         border-collapse: collapse;
         background: var(--wm-bg-card);
         border-radius: var(--wm-radius);
@@ -3379,7 +3386,8 @@ class WmTippspielCard extends HTMLElement {
         .header-trophy { width: 40px; height: 40px; }
         .header-trophy ha-icon { --mdc-icon-size: 24px; }
         .standings-rankings-row { flex-direction: column; align-items: stretch; }
-        .standings-podium { width: 100%; max-width: 360px; margin: 0 auto; }
+        .standings-podium { flex: 1 1 auto; width: 100%; max-width: none; margin: 0; }
+        .standings-table-wrap { flex: 1 1 auto; max-width: none; width: 100%; }
         .standings-table { min-width: 0; font-size: 0.82rem; }
         .standings-table th,
         .standings-table td { padding: 8px 6px; }
