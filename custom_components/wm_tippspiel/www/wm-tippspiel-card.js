@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.9.10";
+const WM_TIPPSPIEL_CARD_VERSION = "1.9.11";
 const AUTO_SAVE_DELAY_MS = 400;
 const MATCH_TIP_STATUS_CLASSES = [
   "tip-status-saved",
@@ -2436,8 +2436,8 @@ class WmTippspielCard extends HTMLElement {
       }
       .group-table-row {
         display: grid;
-        grid-template-columns: 18px minmax(28px, 1fr) repeat(4, minmax(22px, 1fr));
-        gap: 6px;
+        grid-template-columns: 18px minmax(0, 1fr) 1.85rem 1.85rem 1.85rem 2.1rem;
+        gap: 4px;
         padding: 5px 8px;
         align-items: center;
       }
@@ -2447,7 +2447,11 @@ class WmTippspielCard extends HTMLElement {
         font-size: 0.58rem;
         text-transform: uppercase;
       }
-      .group-table-row .pos { opacity: 0.65; font-weight: 700; }
+      .group-table-row .pos {
+        opacity: 0.65;
+        font-weight: 700;
+        text-align: center;
+      }
       .group-table-row .team-cell {
         display: flex;
         align-items: center;
@@ -2461,7 +2465,12 @@ class WmTippspielCard extends HTMLElement {
         font-size: 0.95rem;
         line-height: 1;
       }
-      .group-table-row .num { text-align: center; font-variant-numeric: tabular-nums; }
+      .group-table-row .num {
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+        justify-self: center;
+        min-width: 100%;
+      }
       .rank-trend {
         font-size: 0.72rem;
         font-weight: 800;
@@ -3630,7 +3639,7 @@ class WmTippspielCard extends HTMLElement {
           .join("");
         return `<div class="group-table">
           <div class="group-table-head">Gruppe ${g}</div>
-          <div class="group-table-row head"><span>#</span><span></span><span>Sp</span><span>Pkt</span><span>T</span><span>+/-</span></div>
+          <div class="group-table-row head"><span class="pos">#</span><span class="team-cell"></span><span class="num">Sp</span><span class="num">Pkt</span><span class="num">T</span><span class="num">+/-</span></div>
           ${body}
         </div>`;
       })
