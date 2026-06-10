@@ -178,6 +178,7 @@ class WmTippspielPlayerSensor(WmTippspielBaseSensor):
         }.get(self._player["id"], {})
         return {
             "player_id": self._player["id"],
+            "avatar": self._player.get("avatar"),
             "tips": tips,
             "exact": standings.get("exact", 0),
             "tendency": standings.get("tendency", 0),

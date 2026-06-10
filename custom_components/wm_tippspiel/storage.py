@@ -17,7 +17,7 @@ from .bracket import (
     templates_from_matches,
     compute_group_tables,
 )
-from .const import STORAGE_KEY, STORAGE_VERSION
+from .const import MAX_AVATAR_DATA_URL_LENGTH, STORAGE_KEY, STORAGE_VERSION
 from .kickoff import is_past_kickoff
 from .scoring import score_tip
 
@@ -198,6 +198,61 @@ class WmTippspielStore:
     def add_player(self, name: str) -> dict[str, str]:
         player = {"id": uuid.uuid4().hex[:8], "name": name.strip()}
         self._data.setdefault("players", []).append(player)
+        return player
+
+    def get_player(self, player_id: str) -> dict[str, str] | None:
+        resolved = self._resolve_player_key(self.get_players(), player_id)
+        if not resolved:
+            return None
+        for player in self.get_players():
+            if player.get("id") == resolved:
+                return player
+        return None
+
+    @staticmethod
+    def _validate_avatar_data_url(avatar: str) -> str:
+        value = str(avatar).strip()
+        if not value:
+            return ""
+        if not value.startswith("data:image/"):
+            raise ValueError("Avatar muss ein Bild im Data-URL-Format sein.")
+        if len(value) > MAX_AVATAR_DATA_URL_LENGTH:
+            raise ValueError("Avatar ist zu groß (max. ca. 120 KB).")
+        return value
+
+    def update_player_profile(
+        self,
+        player_id: str,
+        *,
+        name: str | None = None,
+        avatar: str | None = None,
+        remove_avatar: bool = False,
+    ) -> dict[str, str]:
+        player = self.get_player(player_id)
+        if not player:
+            raise ValueError(f"Spieler nicht gefunden: {player_id}")
+
+        if name is not None:
+            cleaned = str(name).strip()
+            if not cleaned:
+                raise ValueError("Name darf nicht leer sein.")
+            lowered = cleaned.lower()
+            for other in self.get_players():
+                if other.get("id") == player.get("id"):
+                    continue
+                if str(other.get("name", "")).strip().lower() == lowered:
+                    raise ValueError(f"Spielername bereits vergeben: {cleaned}")
+            player["name"] = cleaned
+
+        if remove_avatar:
+            player.pop("avatar", None)
+        elif avatar is not None:
+            validated = self._validate_avatar_data_url(avatar)
+            if validated:
+                player["avatar"] = validated
+            else:
+                player.pop("avatar", None)
+
         return player
 
     def remove_player(self, player_id: str) -> bool:

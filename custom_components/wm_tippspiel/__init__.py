@@ -32,6 +32,7 @@ from .const import (
     SERVICE_SET_RESULT,
     SERVICE_SET_TIP,
     SERVICE_SYNC_RESULTS,
+    SERVICE_UPDATE_PLAYER_PROFILE,
 )
 from .coordinator import WmTippspielCoordinator
 from .frontend import async_register_card
@@ -203,6 +204,41 @@ def _register_services(hass: HomeAssistant) -> None:
 
         _async_notify(hass)
 
+    async def _update_player_profile(call: ServiceCall) -> None:
+        entry_id = call.data.get("entry_id")
+        if not entry_id:
+            entries = hass.config_entries.async_entries(DOMAIN)
+            entry_id = entries[0].entry_id if entries else None
+        if not entry_id:
+            raise HomeAssistantError("Keine WM-Tippspiel-Integration konfiguriert")
+        store = get_store(hass, entry_id)
+        player_id = call.data[ATTR_PLAYER_ID]
+        try:
+            player = store.update_player_profile(
+                player_id,
+                name=call.data.get(ATTR_NAME),
+                avatar=call.data.get("avatar"),
+                remove_avatar=bool(call.data.get("remove_avatar")),
+            )
+        except ValueError as err:
+            raise HomeAssistantError(str(err)) from err
+        await store.async_save()
+
+        registry = er.async_get(hass)
+        unique_id = f"{entry_id}_player_{player['id']}"
+        entity_id = registry.async_get_entity_id("sensor", DOMAIN, unique_id)
+        if entity_id:
+            registry.async_update_entity(entity_id, name=player["name"])
+            component = hass.data.get("entity_components", {}).get("sensor")
+            if component is not None:
+                entity = component.get_entity(entity_id)
+                if entity is not None:
+                    entity._attr_name = player["name"]
+                    entity._player = player
+                    entity.async_write_ha_state()
+
+        _async_notify(hass)
+
     async def _sync_results(call: ServiceCall) -> None:
         entry_id = call.data.get("entry_id")
         if not entry_id:
@@ -297,6 +333,20 @@ def _register_services(hass: HomeAssistant) -> None:
         SERVICE_SYNC_RESULTS,
         _sync_results,
         schema=vol.Schema({vol.Optional("entry_id"): cv.string}),
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_UPDATE_PLAYER_PROFILE,
+        _update_player_profile,
+        schema=vol.Schema(
+            {
+                vol.Optional("entry_id"): cv.string,
+                vol.Required(ATTR_PLAYER_ID): cv.string,
+                vol.Optional(ATTR_NAME): cv.string,
+                vol.Optional("avatar"): cv.string,
+                vol.Optional("remove_avatar"): cv.boolean,
+            }
+        ),
     )
 
 

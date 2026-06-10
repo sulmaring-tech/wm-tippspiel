@@ -72,6 +72,24 @@ remove_player:
     player_id:
       name: Spieler-ID
 
+update_player_profile:
+  name: Spielerprofil bearbeiten
+  description: Ändert Anzeigename und Avatar eines Spielers.
+  fields:
+    entry_id:
+      name: Konfigurations-ID
+    player_id:
+      name: Spieler-ID
+    name:
+      name: Anzeigename
+      description: Neuer Name des Spielers.
+    avatar:
+      name: Avatar
+      description: Bild als Data-URL (data:image/...;base64,...).
+    remove_avatar:
+      name: Avatar entfernen
+      description: Gespeicherten Avatar löschen.
+
 sync_results:
   name: Ergebnisse synchronisieren
   description: Ruft sofort Gruppenspiel-Ergebnisse von openfootball ab.

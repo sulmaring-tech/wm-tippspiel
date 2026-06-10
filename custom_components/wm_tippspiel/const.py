@@ -40,6 +40,9 @@ ATTR_MATCH_ID = "match_id"
 ATTR_HOME = "home"
 ATTR_AWAY = "away"
 ATTR_NAME = "name"
+ATTR_AVATAR = "avatar"
+
+MAX_AVATAR_DATA_URL_LENGTH = 120_000
 
 SERVICE_SET_TIP = "set_tip"
 SERVICE_CLEAR_TIP = "clear_tip"
@@ -49,6 +52,7 @@ SERVICE_CLEAR_ALL_RESULTS = "clear_all_results"
 SERVICE_ADD_PLAYER = "add_player"
 SERVICE_REMOVE_PLAYER = "remove_player"
 SERVICE_SYNC_RESULTS = "sync_results"
+SERVICE_UPDATE_PLAYER_PROFILE = "update_player_profile"
 
 POINTS_EXACT = 3
 POINTS_TENDENCY = 1

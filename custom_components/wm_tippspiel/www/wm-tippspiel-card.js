@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.9.12";
+const WM_TIPPSPIEL_CARD_VERSION = "1.10.0";
 const AUTO_SAVE_DELAY_MS = 400;
 const MATCH_TIP_STATUS_CLASSES = [
   "tip-status-saved",
@@ -93,6 +93,42 @@ function escapeHtml(s) {
     '"': "&quot;",
     "'": "&#39;",
   }[c]));
+}
+
+function playerById(players, playerId) {
+  return (players || []).find((p) => p.id === playerId) || null;
+}
+
+function renderPlayerAvatar(player, className = "player-avatar") {
+  if (player?.avatar) {
+    return `<img class="${className}" src="${player.avatar}" alt="" loading="lazy" />`;
+  }
+  const initial = String(player?.name || "?").trim().charAt(0).toUpperCase() || "?";
+  return `<span class="${className} player-avatar-fallback" aria-hidden="true">${escapeHtml(initial)}</span>`;
+}
+
+function resizeAvatarFileToDataUrl(file, maxSize = 128) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Datei konnte nicht gelesen werden."));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("Ungültiges Bild."));
+      img.onload = () => {
+        const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", 0.85));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 function teamFlag(name) {
@@ -911,15 +947,38 @@ class WmTippspielCard extends HTMLElement {
         this._renderShell();
         return;
       }
-      const modalClose = ev.target.closest("[data-action=modal-close]");
-      if (modalClose) {
-        this._matchDetailModalId = null;
+      const openProfile = ev.target.closest("[data-action=open-profile]");
+      if (openProfile) {
+        if (!this._selectedPlayer) {
+          this._showToast("Bitte zuerst einen Spieler auswählen.", "error");
+          return;
+        }
+        this._profileModalOpen = true;
+        this._profileDraftAvatar = undefined;
+        this._profileRemoveAvatar = false;
         this._renderShell();
         return;
       }
-      if (ev.target.getAttribute?.("data-action") === "modal-close-overlay") {
-        this._matchDetailModalId = null;
+      const removeProfileAvatar = ev.target.closest("[data-action=remove-profile-avatar]");
+      if (removeProfileAvatar) {
+        this._profileDraftAvatar = "";
+        this._profileRemoveAvatar = true;
         this._renderShell();
+        return;
+      }
+      const saveProfile = ev.target.closest("[data-action=save-profile]");
+      if (saveProfile) {
+        ev.preventDefault();
+        void this._saveProfile(saveProfile);
+        return;
+      }
+      const modalClose = ev.target.closest("[data-action=modal-close]");
+      if (modalClose) {
+        this._closeModals();
+        return;
+      }
+      if (ev.target.getAttribute?.("data-action") === "modal-close-overlay") {
+        this._closeModals();
         return;
       }
       const saveTip = ev.target.closest("[data-action=save-tip]");
@@ -988,10 +1047,16 @@ class WmTippspielCard extends HTMLElement {
       true
     );
 
+    this.shadowRoot.addEventListener("change", (ev) => {
+      const fileInput = ev.target.closest("#profile-avatar-input");
+      if (fileInput?.files?.[0]) {
+        void this._handleProfileAvatarFile(fileInput.files[0]);
+      }
+    });
+
     this.shadowRoot.addEventListener("keydown", (ev) => {
-      if (ev.key === "Escape" && this._matchDetailModalId) {
-        this._matchDetailModalId = null;
-        this._renderShell();
+      if (ev.key === "Escape" && (this._matchDetailModalId || this._profileModalOpen)) {
+        this._closeModals();
         return;
       }
       if (ev.key !== "Enter") return;
@@ -1762,6 +1827,115 @@ class WmTippspielCard extends HTMLElement {
     </div>`;
   }
 
+  _closeModals() {
+    this._matchDetailModalId = null;
+    this._profileModalOpen = false;
+    this._profileDraftAvatar = undefined;
+    this._profileRemoveAvatar = false;
+    this._renderShell();
+  }
+
+  _profilePreviewPlayer(player) {
+    if (!player) return null;
+    if (this._profileRemoveAvatar) {
+      return { ...player, avatar: null };
+    }
+    if (this._profileDraftAvatar !== undefined) {
+      return { ...player, avatar: this._profileDraftAvatar || null };
+    }
+    return player;
+  }
+
+  _renderProfileModal(players, playerId) {
+    if (!this._profileModalOpen || !playerId) return "";
+    const player = playerById(players, playerId);
+    if (!player) return "";
+    const preview = this._profilePreviewPlayer(player);
+    return `<div class="modal-overlay" data-action="modal-close-overlay" role="presentation">
+      <div class="modal-card profile-modal" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title">
+        <header class="modal-header">
+          <h2 id="profile-modal-title">Profil bearbeiten</h2>
+          <button type="button" class="modal-close" data-action="modal-close" aria-label="Schließen">×</button>
+        </header>
+        <div class="profile-modal-body">
+          <div class="profile-avatar-row">
+            ${renderPlayerAvatar(preview, "profile-avatar-preview")}
+            <div class="profile-avatar-actions">
+              <label class="btn profile-upload-btn">
+                Bild wählen
+                <input id="profile-avatar-input" type="file" accept="image/*" hidden />
+              </label>
+              ${
+                preview?.avatar
+                  ? `<button type="button" class="btn btn-muted" data-action="remove-profile-avatar">Avatar entfernen</button>`
+                  : ""
+              }
+            </div>
+          </div>
+          <label class="profile-field">
+            <span class="profile-label">Anzeigename</span>
+            <input id="profile-name-input" class="profile-input" type="text" maxlength="48" value="${escapeHtml(player.name)}" />
+          </label>
+          <p class="profile-hint">Avatar wird lokal gespeichert und in der Rangliste sowie bei der Spielerauswahl angezeigt.</p>
+          <div class="profile-actions">
+            <button type="button" class="btn btn-muted" data-action="modal-close">Abbrechen</button>
+            <button type="button" class="btn" data-action="save-profile">Speichern</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  async _handleProfileAvatarFile(file) {
+    if (!file?.type?.startsWith("image/")) {
+      this._showToast("Bitte ein Bild auswählen.", "error");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      this._showToast("Bild ist zu groß (max. 5 MB).", "error");
+      return;
+    }
+    try {
+      this._profileDraftAvatar = await resizeAvatarFileToDataUrl(file);
+      this._profileRemoveAvatar = false;
+      this._renderShell();
+    } catch (err) {
+      this._showToast(this._serviceErrorMessage(err), "error");
+    }
+  }
+
+  async _saveProfile(btn) {
+    const playerId = this._selectedPlayer;
+    if (!playerId) {
+      this._showToast("Bitte zuerst einen Spieler auswählen.", "error");
+      return;
+    }
+    const nameInput = this.shadowRoot.querySelector("#profile-name-input");
+    const name = nameInput?.value?.trim() || "";
+    if (!name) {
+      this._showToast("Name darf nicht leer sein.", "error");
+      return;
+    }
+    const payload = { player_id: playerId, name };
+    if (this._profileRemoveAvatar) {
+      payload.remove_avatar = true;
+    } else if (this._profileDraftAvatar) {
+      payload.avatar = this._profileDraftAvatar;
+    }
+    if (btn) btn.disabled = true;
+    try {
+      await this._callService("update_player_profile", payload);
+      this._profileModalOpen = false;
+      this._profileDraftAvatar = undefined;
+      this._profileRemoveAvatar = false;
+      this._showToast("Profil gespeichert.", "success");
+      this._renderShell();
+    } catch (err) {
+      this._showToast(this._serviceErrorMessage(err), "error");
+      if (btn) btn.disabled = false;
+    }
+  }
+
   _renderMatchAccordions(matches, renderMatchFn, selectedGroups = null) {
     const { groups, rounds } = partitionMatches(matches);
     const groupFilter = selectedGroups ? new Set(selectedGroups) : null;
@@ -2151,10 +2325,14 @@ class WmTippspielCard extends HTMLElement {
       .player-bar {
         display: flex;
         flex-wrap: wrap;
+        align-items: center;
         gap: 8px;
         margin-bottom: 16px;
       }
       .player-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
         padding: 6px 12px;
         border-radius: 8px;
         border: 1px solid var(--wm-border);
@@ -2164,6 +2342,59 @@ class WmTippspielCard extends HTMLElement {
         font-weight: 600;
         cursor: pointer;
         transition: background 0.15s, border-color 0.15s, color 0.15s;
+      }
+      .player-chip-avatar,
+      .standings-avatar,
+      .podium-avatar {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        object-fit: cover;
+        flex-shrink: 0;
+      }
+      .player-chip-avatar.player-avatar-fallback,
+      .standings-avatar.player-avatar-fallback,
+      .podium-avatar.player-avatar-fallback {
+        display: grid;
+        place-items: center;
+        background: var(--wm-bg-elevated);
+        color: var(--wm-accent);
+        font-size: 0.78rem;
+        font-weight: 800;
+      }
+      .podium-avatar {
+        width: 44px;
+        height: 44px;
+        margin-bottom: 4px;
+      }
+      .profile-edit-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin-left: auto;
+        padding: 6px 12px;
+        border-radius: 8px;
+        border: 1px solid var(--wm-border);
+        background: var(--wm-bg-card);
+        color: var(--wm-text-muted);
+        font-size: 0.82rem;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .profile-edit-btn:hover {
+        background: var(--wm-bg-elevated);
+        color: var(--wm-text);
+      }
+      .profile-edit-btn ha-icon { --mdc-icon-size: 18px; }
+      .standings-player-cell {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+      }
+      .standings-avatar {
+        width: 32px;
+        height: 32px;
       }
       .player-chip:hover {
         background: var(--wm-bg-elevated);
@@ -3103,6 +3334,91 @@ class WmTippspielCard extends HTMLElement {
         color: var(--wm-text);
         background: var(--wm-border);
       }
+      .profile-modal-body {
+        padding: 0 16px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .profile-avatar-row {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+      .profile-avatar-preview {
+        width: 88px;
+        height: 88px;
+        border-radius: 50%;
+        object-fit: cover;
+        border: 2px solid var(--wm-border);
+      }
+      .profile-avatar-preview.player-avatar-fallback {
+        display: grid;
+        place-items: center;
+        background: var(--wm-bg-elevated);
+        color: var(--wm-accent);
+        font-size: 2rem;
+        font-weight: 800;
+      }
+      .profile-avatar-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .profile-upload-btn {
+        cursor: pointer;
+        margin: 0;
+      }
+      .profile-field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .profile-label {
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: var(--wm-text-muted);
+      }
+      .profile-input {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1px solid var(--wm-border);
+        background: var(--wm-bg-elevated);
+        color: var(--wm-text);
+        font-size: 0.95rem;
+      }
+      .profile-input:focus {
+        outline: none;
+        border-color: var(--wm-accent);
+      }
+      .profile-hint {
+        margin: 0;
+        font-size: 0.8rem;
+        color: var(--wm-text-muted);
+        line-height: 1.45;
+      }
+      .profile-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .profile-actions .btn,
+      .profile-avatar-actions .btn {
+        width: auto;
+        margin-top: 0;
+      }
+      .btn-muted {
+        background: transparent;
+        border: 1px solid var(--wm-border);
+        color: var(--wm-text-muted);
+      }
+      .btn-muted:hover {
+        color: var(--wm-text);
+        background: var(--wm-bg-elevated);
+      }
       .match-detail-modal-body {
         padding: 0 16px 16px;
       }
@@ -3504,7 +3820,7 @@ class WmTippspielCard extends HTMLElement {
 
       if (this._tab === "standings") {
         this._detectStandingsFlash(standings);
-        body = this._renderStandings(standings);
+        body = this._renderStandings(standings, players);
       } else if (this._tab === "groups") {
         body = this._renderGroupTablesTab(groupTables);
       } else if (this._tab === "calendar") {
@@ -3515,16 +3831,20 @@ class WmTippspielCard extends HTMLElement {
 
     const subtitle = cfg.subtitle || "Fußball-WM 2026 · Tipprunde";
     let modalHtml = "";
-    if (!missing && this._matchDetailModalId) {
+    if (!missing) {
       const { players, matches, tips, results } = this._data();
       const playerId = this._selectedPlayer;
       const playerTips = tips[playerId] || {};
-      modalHtml = this._renderMatchDetailModal(
-        this._filteredMatches(matches),
-        playerTips,
-        results,
-        playerId
-      );
+      if (this._matchDetailModalId) {
+        modalHtml = this._renderMatchDetailModal(
+          this._filteredMatches(matches),
+          playerTips,
+          results,
+          playerId
+        );
+      } else if (this._profileModalOpen) {
+        modalHtml = this._renderProfileModal(players, playerId);
+      }
     }
     this.shadowRoot.innerHTML = `
       <style>${this._styles()}</style>
@@ -3547,9 +3867,14 @@ class WmTippspielCard extends HTMLElement {
               ? `<div class="player-bar">${this._data()
                   .players.map(
                     (p) =>
-                      `<button type="button" class="player-chip ${p.id === this._selectedPlayer ? "active" : ""}" data-player-id="${escapeHtml(p.id)}">${escapeHtml(p.name)}</button>`
+                      `<button type="button" class="player-chip ${p.id === this._selectedPlayer ? "active" : ""}" data-player-id="${escapeHtml(p.id)}">${renderPlayerAvatar(p, "player-chip-avatar")}<span>${escapeHtml(p.name)}</span></button>`
                   )
-                  .join("")}</div>`
+                  .join("")}
+                  <button type="button" class="profile-edit-btn" data-action="open-profile" title="Profil bearbeiten">
+                    <ha-icon icon="mdi:account-edit"></ha-icon>
+                    <span>Profil</span>
+                  </button>
+                </div>`
               : ""
           }
           <nav class="tabs tab-bar" aria-label="Bereiche">
@@ -3705,7 +4030,7 @@ class WmTippspielCard extends HTMLElement {
     return extra;
   }
 
-  _renderStandings(standings) {
+  _renderStandings(standings, players = []) {
     if (!standings.length) {
       return `<div class="empty">
         <div class="empty-icon">🏆</div>
@@ -3727,8 +4052,10 @@ class WmTippspielCard extends HTMLElement {
         const flash = s && podiumFlash.has(s.id) ? " flash" : "";
         const blockClass = `podium-block-${placement}`;
         const rank = placementRank[placement];
+        const podiumPlayer = s ? playerById(players, s.id) || s : null;
         return `<div class="podium-slot${s ? "" : " podium-slot-empty"}${flash}">
           <div class="podium-player">
+            ${podiumPlayer ? renderPlayerAvatar(podiumPlayer, "podium-avatar") : ""}
             <span class="podium-medal">${s ? medal : ""}</span>
             <span class="podium-name">${s ? escapeHtml(s.name) : "—"}</span>
             <span class="podium-points">${s ? `${s.points} Pkt.` : ""}</span>
@@ -3743,9 +4070,10 @@ class WmTippspielCard extends HTMLElement {
       .map((s, i) => {
         const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : s.rank;
         const flash = flashIds.has(s.id) ? " flash-points" : "";
+        const rowPlayer = playerById(players, s.id) || s;
         return `<tr${flash ? ` class="${flash.trim()}"` : ""}>
           <td class="num">${medal}</td>
-          <td>${escapeHtml(s.name)}${this._renderRankTrend(s.rank_change)}</td>
+          <td><span class="standings-player-cell">${renderPlayerAvatar(rowPlayer, "standings-avatar")}<span>${escapeHtml(s.name)}${this._renderRankTrend(s.rank_change)}</span></span></td>
           <td class="num points">${s.points}</td>
           <td class="num">${s.exact}</td>
           <td class="num">${s.tendency}</td>
