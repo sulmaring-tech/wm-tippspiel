@@ -22,6 +22,10 @@ OPENFOOTBALL_JSON_URL = (
     "https://raw.githubusercontent.com/openfootball/worldcup.json/"
     "master/2026/worldcup.json"
 )
+ESPN_SCOREBOARD_URL = (
+    "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard"
+)
+ESPN_SCOREBOARD_DATES = "20260611-20260719"
 
 STORAGE_VERSION = 1
 STORAGE_KEY = "wm_tippspiel"

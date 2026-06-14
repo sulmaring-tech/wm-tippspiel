@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.10.0";
+const WM_TIPPSPIEL_CARD_VERSION = "1.11.0";
 const AUTO_SAVE_DELAY_MS = 400;
 const MATCH_TIP_STATUS_CLASSES = [
   "tip-status-saved",
@@ -16,6 +16,38 @@ const KNOCKOUT_ROUNDS = [
   "Spiel um Platz 3",
   "Finale",
 ];
+const BRACKET_LEFT_ORDER = {
+  Sechzehntelfinale: ["R16-1", "R16-2", "R16-3", "R16-4", "R16-5", "R16-6", "R16-7", "R16-8"],
+  Achtelfinale: ["R8-1", "R8-2", "R8-3", "R8-4"],
+  Viertelfinale: ["VF-1", "VF-2"],
+  Halbfinale: ["HF-1"],
+};
+
+const BRACKET_RIGHT_ORDER = {
+  Sechzehntelfinale: ["R16-9", "R16-10", "R16-11", "R16-12", "R16-13", "R16-14", "R16-15", "R16-16"],
+  Achtelfinale: ["R8-5", "R8-6", "R8-7", "R8-8"],
+  Viertelfinale: ["VF-3", "VF-4"],
+  Halbfinale: ["HF-2"],
+};
+
+const KNOCKOUT_FEEDERS = {
+  "R8-1": ["R16-1", "R16-2"],
+  "R8-2": ["R16-3", "R16-4"],
+  "R8-3": ["R16-5", "R16-6"],
+  "R8-4": ["R16-7", "R16-8"],
+  "R8-5": ["R16-9", "R16-10"],
+  "R8-6": ["R16-11", "R16-12"],
+  "R8-7": ["R16-13", "R16-14"],
+  "R8-8": ["R16-15", "R16-16"],
+  "VF-1": ["R8-1", "R8-2"],
+  "VF-2": ["R8-3", "R8-4"],
+  "VF-3": ["R8-5", "R8-6"],
+  "VF-4": ["R8-7", "R8-8"],
+  "HF-1": ["VF-1", "VF-2"],
+  "HF-2": ["VF-3", "VF-4"],
+  "TP-1": ["HF-1", "HF-2"],
+  "F-1": ["HF-1", "HF-2"],
+};
 const DEFAULT_ACCENT = "#87B8E0";
 const DEFAULT_ACCENT_DARK = "#6BA3D0";
 const DEFAULT_ACCENT_2 = "#22c55e";
@@ -303,6 +335,57 @@ function splitRoundMatches(list) {
   if (!list.length) return { left: [], right: [] };
   const mid = Math.ceil(list.length / 2);
   return { left: list.slice(0, mid), right: list.slice(mid) };
+}
+
+function bracketMatchNumber(id) {
+  const match = String(id).match(/^(?:R16|R8|VF|HF)-(\d+)$/);
+  return match ? parseInt(match[1], 10) : 0;
+}
+
+function sortBracketMatches(list) {
+  return [...list].sort((a, b) => bracketMatchNumber(a.id) - bracketMatchNumber(b.id));
+}
+
+function orderBracketByIds(list, ids) {
+  const byId = new Map(list.map((m) => [m.id, m]));
+  return ids.map((id) => byId.get(id)).filter(Boolean);
+}
+
+function orderBracketRound(stage, list) {
+  const sorted = sortBracketMatches(list);
+  const leftIds = BRACKET_LEFT_ORDER[stage];
+  const rightIds = BRACKET_RIGHT_ORDER[stage];
+  if (leftIds?.length || rightIds?.length) {
+    return {
+      left: leftIds ? orderBracketByIds(list, leftIds) : [],
+      right: rightIds ? orderBracketByIds(list, rightIds) : [],
+      all: sorted,
+    };
+  }
+  const split = splitRoundMatches(sorted);
+  return { ...split, all: sorted };
+}
+
+function buildBracketConnections(matches) {
+  const koIds = new Set(matches.filter((m) => !m.group).map((m) => m.id));
+  return Object.entries(KNOCKOUT_FEEDERS)
+    .filter(([targetId]) => koIds.has(targetId))
+    .map(([targetId, feederIds]) => ({
+      targetId,
+      feederIds: feederIds.filter((id) => koIds.has(id)),
+    }))
+    .filter((c) => c.feederIds.length > 0);
+}
+
+function buildGutterConnections(feederMatchIds, targetMatchIds, connections) {
+  const feeders = new Set(feederMatchIds);
+  const targets = new Set(targetMatchIds);
+  return connections.filter(
+    (c) =>
+      targets.has(c.targetId) &&
+      c.feederIds.length > 0 &&
+      c.feederIds.every((id) => feeders.has(id))
+  );
 }
 
 function isBracketPlaceholder(name) {
@@ -3094,25 +3177,107 @@ class WmTippspielCard extends HTMLElement {
         padding-bottom: 8px;
         margin: 0 -4px;
       }
+      .bracket-scroll-wrap {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .bracket-pairing-hint {
+        margin: 0;
+        font-size: 0.82rem;
+        color: var(--wm-text-muted);
+        line-height: 1.45;
+      }
+      .bracket-tree-inner {
+        position: relative;
+        min-width: min(100%, 980px);
+      }
+      .bracket-lines-overlay {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 0;
+        overflow: visible;
+      }
+      .bracket-line {
+        fill: none;
+        stroke: rgba(135, 184, 224, 0.45);
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
       .bracket-tree {
+        --bracket-gutter-width: 20px;
+        --bracket-center-width: 200px;
         display: grid;
-        grid-template-columns: 1fr minmax(160px, 220px) 1fr;
+        grid-template-columns: minmax(0, 1fr) minmax(140px, var(--bracket-center-width)) minmax(0, 1fr);
         gap: 12px;
-        min-width: min(100%, 920px);
+        width: 100%;
         align-items: stretch;
+        position: relative;
+        z-index: 1;
+      }
+      .bracket-tree-headers {
+        margin-bottom: 4px;
+      }
+      .bracket-round--title-only {
+        min-width: 148px;
+        justify-content: center;
+      }
+      .bracket-join-gutter {
+        flex: 0 0 var(--bracket-gutter-width);
+        width: var(--bracket-gutter-width);
+        min-width: var(--bracket-gutter-width);
+        position: relative;
+        align-self: stretch;
+        z-index: 4;
+        overflow: visible;
+      }
+      .bracket-join-gutter--spacer {
+        opacity: 0;
       }
       .bracket-side {
         display: flex;
-        gap: 10px;
+        gap: 0;
         min-width: 0;
+        width: 100%;
       }
-      .bracket-side.left { justify-content: flex-end; }
-      .bracket-side.right { justify-content: flex-start; }
+      .bracket-side.left { justify-content: flex-end; margin-left: auto; }
+      .bracket-side.right { justify-content: flex-start; margin-right: auto; }
       .bracket-center {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-self: stretch;
+        min-height: 100%;
+        min-width: var(--bracket-center-width);
+      }
+      .bracket-center--header {
+        min-height: 0;
+      }
+      .bracket-center-body {
+        position: absolute;
+        inset: 0;
         display: flex;
         flex-direction: column;
         justify-content: center;
-        gap: 12px;
+        align-items: stretch;
+        pointer-events: none;
+      }
+      .bracket-center-finals {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        pointer-events: auto;
+      }
+      .bracket-third-label {
+        font-size: 0.62rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        opacity: 0.55;
+        text-align: center;
+        margin-bottom: 4px;
       }
       .bracket-round {
         flex: 1;
@@ -3905,6 +4070,37 @@ class WmTippspielCard extends HTMLElement {
       this._displayedPlayerId = this._selectedPlayer;
       this._snapshotPlayerTips(this._selectedPlayer);
     }
+    this._scheduleBracketConnectors();
+  }
+
+  _scheduleBracketConnectors() {
+    if (this._tab !== "bracket") {
+      this._teardownBracketResizeObserver();
+      return;
+    }
+    cancelAnimationFrame(this._bracketDrawRaf || 0);
+    this._bracketDrawRaf = requestAnimationFrame(() => {
+      this._bracketDrawRaf = requestAnimationFrame(() => {
+        this._drawBracketConnectors();
+        this._ensureBracketResizeObserver();
+      });
+    });
+  }
+
+  _ensureBracketResizeObserver() {
+    if (this._bracketResizeObserver || typeof ResizeObserver === "undefined") return;
+    const inner = this.shadowRoot?.querySelector(".bracket-tree-inner");
+    if (!inner) return;
+    this._bracketResizeObserver = new ResizeObserver(() => {
+      if (this._tab === "bracket") this._drawBracketConnectors();
+    });
+    this._bracketResizeObserver.observe(inner);
+  }
+
+  _teardownBracketResizeObserver() {
+    if (!this._bracketResizeObserver) return;
+    this._bracketResizeObserver.disconnect();
+    this._bracketResizeObserver = null;
   }
 
   _isAdmin() {
@@ -4210,20 +4406,108 @@ class WmTippspielCard extends HTMLElement {
     </div>`;
   }
 
-  _renderBracketRoundColumn(title, list, playerTips, results, playerId) {
+  _renderBracketRoundBody(list, playerTips, results, playerId) {
     if (!list.length) return "";
     return `<div class="bracket-round">
-      <div class="bracket-round-title">${escapeHtml(title)}</div>
       <div class="bracket-round-body">${list
         .map((m) => this._renderBracketMatchSlot(m, playerTips, results, playerId))
         .join("")}</div>
     </div>`;
   }
 
-  _renderBracketSide(rounds, side, playerTips, results, playerId) {
-    return `<div class="bracket-side ${side}">${rounds
-      .map(({ title, list }) => this._renderBracketRoundColumn(title, list, playerTips, results, playerId))
+  _renderBracketRoundTitles(rounds, side) {
+    const list = side === "left" ? rounds : [...rounds].reverse();
+    return `<div class="bracket-side ${side}">${list
+      .map(
+        (round, index) =>
+          `<div class="bracket-round bracket-round--title-only"><div class="bracket-round-title">${escapeHtml(round.title)}</div></div>${
+            index < list.length - 1 ? `<div class="bracket-join-gutter bracket-join-gutter--spacer" aria-hidden="true"></div>` : ""
+          }`
+      )
       .join("")}</div>`;
+  }
+
+  _renderBracketSideColumns(rounds, side, playerTips, results, playerId, connections) {
+    const list = side === "left" ? rounds : [...rounds].reverse();
+    return `<div class="bracket-side ${side}">${list
+      .map((round, index) => {
+        const matches = side === "left" ? round.left : round.right;
+        const nextRound = list[index + 1];
+        let gutter = "";
+        if (nextRound) {
+          const gutterConnections = buildGutterConnections(
+            matches.map((m) => m.id),
+            (side === "left" ? nextRound.left : nextRound.right).map((m) => m.id),
+            connections
+          );
+          gutter = `<div class="bracket-join-gutter" data-gutter-side="${side}" data-gutter-depth="${index}" aria-hidden="true"></div>`;
+          void gutterConnections;
+        }
+        return `${this._renderBracketRoundBody(matches, playerTips, results, playerId)}${gutter}`;
+      })
+      .join("")}</div>`;
+  }
+
+  _drawBracketConnectors() {
+    if (!this.shadowRoot || this._tab !== "bracket") return;
+    const inner = this.shadowRoot.querySelector(".bracket-tree-inner");
+    const slotsTree = this.shadowRoot.querySelector(".bracket-tree-slots");
+    if (!inner || !slotsTree) return;
+
+    let svg = inner.querySelector(".bracket-lines-overlay");
+    if (!svg) {
+      svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("class", "bracket-lines-overlay");
+      inner.prepend(svg);
+    }
+
+    const rootRect = inner.getBoundingClientRect();
+    const width = Math.max(1, rootRect.width);
+    const height = Math.max(1, rootRect.height);
+    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    svg.setAttribute("width", String(width));
+    svg.setAttribute("height", String(height));
+    svg.innerHTML = "";
+
+    const slotPoint = (el, side) => {
+      const rect = el.getBoundingClientRect();
+      return {
+        x: (side === "right" ? rect.right : rect.left) - rootRect.left,
+        y: rect.top + rect.height / 2 - rootRect.top,
+      };
+    };
+
+    const elementSide = (el) => {
+      if (el.closest(".bracket-side.left")) return "left";
+      if (el.closest(".bracket-side.right")) return "right";
+      return "center";
+    };
+
+    const { matches } = this._data();
+    const connections = buildBracketConnections(matches || []);
+
+    for (const conn of connections) {
+      const targetEl = slotsTree.querySelector(`.bracket-slot[data-match-id="${conn.targetId}"]`);
+      if (!targetEl) continue;
+      for (const feederId of conn.feederIds) {
+        const feederEl = slotsTree.querySelector(`.bracket-slot[data-match-id="${feederId}"]`);
+        if (!feederEl) continue;
+        const feederSide = elementSide(feederEl);
+        const targetSide = elementSide(targetEl);
+        const fromSide = targetSide === "center" ? (feederSide === "left" ? "right" : "left") : feederSide === "left" ? "right" : "left";
+        const toSide = targetSide === "center" ? (feederSide === "left" ? "left" : "right") : fromSide === "right" ? "left" : "right";
+        const start = slotPoint(feederEl, fromSide);
+        const end = slotPoint(targetEl, toSide);
+        const midX = (start.x + end.x) / 2;
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute(
+          "d",
+          `M ${start.x} ${start.y} L ${midX} ${start.y} L ${midX} ${end.y} L ${end.x} ${end.y}`
+        );
+        path.setAttribute("class", "bracket-line");
+        svg.appendChild(path);
+      }
+    }
   }
 
   _renderBracketMobile(rounds, playerTips, results, playerId) {
@@ -4260,15 +4544,17 @@ class WmTippspielCard extends HTMLElement {
       const list = rounds.get(stage) || [];
       if (!list.length) continue;
       if (stage === "Finale" || stage === "Spiel um Platz 3") continue;
-      const split = splitRoundMatches(list);
-      treeRounds.push({ title: stage, left: split.left, right: split.right, all: list });
-      mobileRounds.push({ title: stage, list });
+      const ordered = orderBracketRound(stage, list);
+      treeRounds.push({ title: stage, left: ordered.left, right: ordered.right, all: ordered.all });
+      mobileRounds.push({ title: stage, list: ordered.all });
     }
 
     const finale = (rounds.get("Finale") || [])[0];
     const third = (rounds.get("Spiel um Platz 3") || [])[0];
     if (finale) mobileRounds.push({ title: "Finale", list: [finale] });
     if (third) mobileRounds.push({ title: "Spiel um Platz 3", list: [third] });
+
+    const connections = buildBracketConnections(knockoutMatches);
 
     const resultIds = Object.keys(results || {}).filter((id) => knockoutMatches.some((m) => m.id === id));
     let adminBar = "";
@@ -4279,27 +4565,44 @@ class WmTippspielCard extends HTMLElement {
       </div>`;
     }
 
-    const leftSide = this._renderBracketSide(
-      treeRounds.map((r) => ({ title: r.title, list: r.left })),
+    const leftSide = this._renderBracketSideColumns(
+      treeRounds,
       "left",
       playerTips,
       results,
-      playerId
+      playerId,
+      connections
     );
-    const rightSide = this._renderBracketSide(
-      treeRounds.map((r) => ({ title: r.title, list: r.right })).reverse(),
+    const rightSide = this._renderBracketSideColumns(
+      treeRounds,
       "right",
       playerTips,
       results,
-      playerId
+      playerId,
+      connections
     );
+    const titleRow = `<div class="bracket-tree bracket-tree-headers">
+      ${this._renderBracketRoundTitles(treeRounds, "left")}
+      <div class="bracket-center bracket-center--header"></div>
+      ${this._renderBracketRoundTitles(treeRounds, "right")}
+    </div>`;
     const center = `<div class="bracket-center">
-      ${finale ? this._renderBracketMatchSlot(finale, playerTips, results, playerId, { center: true }) : ""}
-      ${third ? this._renderBracketMatchSlot(third, playerTips, results, playerId) : ""}
+      <div class="bracket-center-body">
+        <div class="bracket-center-finals">
+          ${finale ? `<div class="bracket-finale-wrap">${this._renderBracketMatchSlot(finale, playerTips, results, playerId, { center: true })}</div>` : ""}
+          ${third ? `<div class="bracket-third-wrap"><div class="bracket-third-label">Spiel um Platz 3</div>${this._renderBracketMatchSlot(third, playerTips, results, playerId)}</div>` : ""}
+        </div>
+      </div>
     </div>`;
 
-    return `${adminBar}<div class="bracket-scroll">
-      <div class="bracket-tree">${leftSide}${center}${rightSide}</div>
+    return `${adminBar}<div class="bracket-scroll-wrap">
+      <p class="bracket-pairing-hint">Bis zum Ende der Vorrunde sind die K.o.-Paarungen nur Momentaufnahmen und können sich mit jedem Gruppenspiel noch ändern.</p>
+      <div class="bracket-scroll">
+        <div class="bracket-tree-inner">
+          ${titleRow}
+          <div class="bracket-tree bracket-tree-slots">${leftSide}${center}${rightSide}</div>
+        </div>
+      </div>
       ${this._renderBracketMobile(mobileRounds, playerTips, results, playerId)}
     </div>`;
   }

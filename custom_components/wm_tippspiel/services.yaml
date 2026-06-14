@@ -92,7 +92,7 @@ update_player_profile:
 
 sync_results:
   name: Ergebnisse synchronisieren
-  description: Ruft sofort Gruppenspiel-Ergebnisse von openfootball ab.
+  description: Ruft sofort Ergebnisse von ESPN ab (Fallback openfootball).
   fields:
     entry_id:
       name: Konfigurations-ID

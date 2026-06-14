@@ -129,9 +129,14 @@ class WmTippspielLeaderboardSensor(WmTippspielBaseSensor):
         if self._coordinator.data:
             attrs["results_sync"] = {
                 "enabled": self._coordinator.data.get("sync_enabled"),
+                "source": self._coordinator.data.get("source"),
                 "last_sync": self._coordinator.data.get("last_sync"),
                 "updated_matches": self._coordinator.data.get("updated_matches"),
+                "updated_group": self._coordinator.data.get("updated_group"),
+                "updated_knockout": self._coordinator.data.get("updated_knockout"),
                 "finished_count": self._coordinator.data.get("finished_count"),
+                "matched_count": self._coordinator.data.get("matched_count"),
+                "unmapped_count": self._coordinator.data.get("unmapped_count"),
                 "error": self._coordinator.data.get("error"),
             }
             attrs["api_sync"] = attrs["results_sync"]
@@ -178,7 +183,6 @@ class WmTippspielPlayerSensor(WmTippspielBaseSensor):
         }.get(self._player["id"], {})
         return {
             "player_id": self._player["id"],
-            "avatar": self._player.get("avatar"),
             "tips": tips,
             "exact": standings.get("exact", 0),
             "tendency": standings.get("tendency", 0),

@@ -54,3 +54,18 @@ TEAM_DE_TO_EN: dict[str, str] = {
 }
 
 OPENFOOTBALL_TEAM_NAMES = {en: de for de, en in TEAM_DE_TO_EN.items()}
+EN_TO_DE = OPENFOOTBALL_TEAM_NAMES
+
+ESPN_NAME_ALIASES: dict[str, str] = {
+    "Czechia": "Czech Republic",
+    "Bosnia and Herzegovina": "Bosnia & Herzegovina",
+    "Bosnia-Herzegovina": "Bosnia & Herzegovina",
+    "Côte d'Ivoire": "Ivory Coast",
+    "Cote d'Ivoire": "Ivory Coast",
+    "United States": "USA",
+    "Congo DR": "DR Congo",
+    "Türkiye": "Turkey",
+    "Turkiye": "Turkey",
+    "Curacao": "Curaçao",
+    "Cura\u00e7ao": "Curaçao",
+}
