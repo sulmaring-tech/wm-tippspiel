@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import uuid
 from pathlib import Path
 from typing import Any
@@ -40,6 +41,53 @@ def _empty_store() -> dict[str, Any]:
         "tips": {},
         "results": {},
     }
+
+
+def _uses_legacy_knockout_ids(matches: list[dict[str, Any]]) -> bool:
+    return any(str(m.get("id", "")).startswith("R32-") for m in matches)
+
+
+def _remap_legacy_knockout_id(match_id: str) -> str:
+    """Altes Schema R32-* / R16-* (Achtelfinale) → Strato/Website R16-* / R8-*."""
+    if match_id.startswith("R32-"):
+        return "R16-" + match_id[4:]
+    if re.fullmatch(r"R16-\d+", match_id):
+        return "R8-" + match_id[4:]
+    return match_id
+
+
+def _migrate_legacy_knockout_ids(data: dict[str, Any]) -> bool:
+    matches = data.get("matches", [])
+    if not isinstance(matches, list) or not _uses_legacy_knockout_ids(matches):
+        return False
+
+    changed = False
+
+    results = data.get("results", {})
+    if isinstance(results, dict):
+        migrated: dict[str, Any] = {}
+        for match_id, payload in results.items():
+            new_id = _remap_legacy_knockout_id(str(match_id))
+            if new_id != match_id:
+                changed = True
+            migrated[new_id] = payload
+        data["results"] = migrated
+
+    tips = data.get("tips", {})
+    if isinstance(tips, dict):
+        for player_id, player_tips in list(tips.items()):
+            if not isinstance(player_tips, dict):
+                continue
+            migrated_tips: dict[str, Any] = {}
+            for match_id, tip in player_tips.items():
+                new_id = _remap_legacy_knockout_id(str(match_id))
+                if new_id != match_id:
+                    changed = True
+                migrated_tips[new_id] = tip
+            tips[player_id] = migrated_tips
+        data["tips"] = tips
+
+    return changed
 
 
 class WmTippspielStore:
@@ -79,6 +127,8 @@ class WmTippspielStore:
             if not self._data.get("matches"):
                 self._data["matches"] = _default_matches()
             changed = self._purge_orphan_tips()
+            if _migrate_legacy_knockout_ids(self._data):
+                changed = True
             if self._sync_matches_from_bundle():
                 changed = True
             if self._refresh_knockout_teams():

@@ -11,14 +11,14 @@ _LOSER_RE = re.compile(r"^Verlierer (.+)$")
 _THIRD_MULTI_RE = re.compile(r"^3\. Gruppe ([A-L](?:/[A-L])*)$")
 
 _THIRD_PLACE_SLOTS: list[tuple[str, str, list[str]]] = [
-    ("R32-2", "away", ["A", "B", "C", "D", "F"]),
-    ("R32-5", "away", ["C", "D", "F", "G", "H"]),
-    ("R32-7", "away", ["C", "E", "F", "H", "I"]),
-    ("R32-8", "away", ["E", "H", "I", "J", "K"]),
-    ("R32-9", "away", ["B", "E", "F", "I", "J"]),
-    ("R32-10", "away", ["A", "E", "H", "I", "J"]),
-    ("R32-13", "away", ["E", "F", "G", "I", "J"]),
-    ("R32-15", "away", ["D", "E", "I", "J", "L"]),
+    ("R16-2", "away", ["A", "B", "C", "D", "F"]),
+    ("R16-5", "away", ["C", "D", "F", "G", "H"]),
+    ("R16-7", "away", ["C", "E", "F", "H", "I"]),
+    ("R16-8", "away", ["E", "H", "I", "J", "K"]),
+    ("R16-9", "away", ["B", "E", "F", "I", "J"]),
+    ("R16-10", "away", ["A", "E", "H", "I", "J"]),
+    ("R16-13", "away", ["E", "F", "G", "I", "J"]),
+    ("R16-15", "away", ["D", "E", "I", "J", "L"]),
 ]
 
 _SCHEDULE_FIELDS = frozenset({"id", "stage", "group", "kickoff", "venue"})

@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.11.0";
+const WM_TIPPSPIEL_CARD_VERSION = "1.11.1";
 const AUTO_SAVE_DELAY_MS = 400;
 const MATCH_TIP_STATUS_CLASSES = [
   "tip-status-saved",
@@ -356,11 +356,11 @@ function orderBracketRound(stage, list) {
   const leftIds = BRACKET_LEFT_ORDER[stage];
   const rightIds = BRACKET_RIGHT_ORDER[stage];
   if (leftIds?.length || rightIds?.length) {
-    return {
-      left: leftIds ? orderBracketByIds(list, leftIds) : [],
-      right: rightIds ? orderBracketByIds(list, rightIds) : [],
-      all: sorted,
-    };
+    const left = leftIds ? orderBracketByIds(list, leftIds) : [];
+    const right = rightIds ? orderBracketByIds(list, rightIds) : [];
+    if (left.length || right.length) {
+      return { left, right, all: sorted };
+    }
   }
   const split = splitRoundMatches(sorted);
   return { ...split, all: sorted };
@@ -3190,7 +3190,8 @@ class WmTippspielCard extends HTMLElement {
       }
       .bracket-tree-inner {
         position: relative;
-        min-width: min(100%, 980px);
+        width: 100%;
+        min-width: 0;
       }
       .bracket-lines-overlay {
         position: absolute;
@@ -3381,7 +3382,7 @@ class WmTippspielCard extends HTMLElement {
       .bracket-mobile {
         display: none;
       }
-      @media (max-width: 860px) {
+      @container wm-body (max-width: 900px) {
         .bracket-tree { display: none; }
         .bracket-mobile {
           display: flex;
@@ -3393,6 +3394,9 @@ class WmTippspielCard extends HTMLElement {
           flex-direction: column;
           gap: 8px;
         }
+      }
+      @media (max-width: 640px) {
+        .bracket-scroll { display: none; }
       }
       .group-filter {
         display: grid;
