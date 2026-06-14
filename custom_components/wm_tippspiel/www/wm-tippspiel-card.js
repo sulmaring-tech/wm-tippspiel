@@ -1,4 +1,4 @@
-const WM_TIPPSPIEL_CARD_VERSION = "1.11.1";
+const WM_TIPPSPIEL_CARD_VERSION = "1.11.2";
 const AUTO_SAVE_DELAY_MS = 400;
 const MATCH_TIP_STATUS_CLASSES = [
   "tip-status-saved",
@@ -2769,7 +2769,23 @@ class WmTippspielCard extends HTMLElement {
       .group-table-row .team-cell {
         display: flex;
         align-items: center;
-        justify-content: center;
+        justify-content: flex-start;
+        min-width: 0;
+      }
+      .group-table-team {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        max-width: 100%;
+      }
+      .group-table-team .team-label {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 0.72rem;
+        font-weight: 600;
+        min-width: 0;
       }
       .group-table-row .team-cell .team-flag-img {
         width: 22px;
@@ -4162,7 +4178,7 @@ class WmTippspielCard extends HTMLElement {
           .map((row, i) => {
             return `<div class="group-table-row">
               <span class="pos">${i + 1}</span>
-              <span class="team-cell" title="${escapeHtml(row.team)}">${teamFlag(row.team)}</span>
+              <span class="team-cell"><span class="group-table-team">${teamFlag(row.team)}${teamDisplayName(row.team)}</span></span>
               <span class="num">${row.played}</span>
               <span class="num">${row.points}</span>
               <span class="num">${row.gf}</span>
@@ -4172,7 +4188,7 @@ class WmTippspielCard extends HTMLElement {
           .join("");
         return `<div class="group-table">
           <div class="group-table-head">Gruppe ${g}</div>
-          <div class="group-table-row head"><span class="pos">#</span><span class="team-cell"></span><span class="num">Sp</span><span class="num">Pkt</span><span class="num">T</span><span class="num">+/-</span></div>
+          <div class="group-table-row head"><span class="pos">#</span><span class="team-cell">Team</span><span class="num">Sp</span><span class="num">Pkt</span><span class="num">T</span><span class="num">+/-</span></div>
           ${body}
         </div>`;
       })
